@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: ustozkonspekt-bot
+    env: python
+    buildCommand: ""
+    startCommand: "python main.py"
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+    plan: free
