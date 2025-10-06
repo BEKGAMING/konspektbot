@@ -58,7 +58,7 @@ async def start_handler(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
     if is_blocked(msg.from_user.id):
         return await msg.answer("⛔ Sizning profilingiz bloklangan.")
-    await msg.answer("Assalomu alaykum!\nQuyidagi menyudan tanlang:", reply_markup=main_menu())
+    await msg.answer("🎓 Assalomu alaykum!\n\nSizga qulay tarzda dars uchun tayyor, tartibli va metodik konspektlar tuzib beruvchi sun’iy intellekt yordamchisiga xush kelibsiz! 🤖\n\n📘 Bot imkoniyatlari:\n✨ Istalgan fan bo‘yicha konspekt yaratish\n✨ 1–11-sinflar uchun to‘liq dars tuzilmasi\n✨ Formulalar, misollar va baholash mezonlari bilan\n✨ Fikrlaringizga mos tarzda o‘zbek tilida ishlab chiqadi\n\n💎 Premium foydalanuvchilar uchun:\n— Konspektning to‘liq versiyasi (.docx fayl ko‘rinishida)\n— O‘z arxivlaringizga kirish imkoniyati\n\n🪄 Boshlash uchun:\n👉 “📄 Yangi Konspekt” tugmasini bosing va fan, sinf hamda mavzuni kiriting.\nBot siz uchun avtomatik tarzda tayyor, bosmaga chiqarishga tayyor konspekt yaratadi!\nQuyidagi menyudan tanlang:", reply_markup=main_menu())
 
 # ====== Yangi Konspekt ======
 @router.message(F.text == "📄 Yangi Konspekt")
