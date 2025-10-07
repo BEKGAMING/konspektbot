@@ -162,7 +162,7 @@ async def custom_or_grade_handler(msg: types.Message):
         else:
             text = generate_lesson_plan(subject, grade, topic)
             preview = get_preview(text, 20)
-            await msg.answer(f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\nTo‘liq versiya uchun premium bo‘ling.", reply_markup=main_menu())
+            await msg.answer(f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\nTo‘liq versiya uchun premium bo‘ling.\nTo'lov uchun Karta:\n9860 6067 4424 9933\nR.K\nShu kartaga 15000 UZS to'lov qiling\nUndan so'ng chek rasmini shu botga yuboring!\nAdmin to'lovni tasdiqlagandan so'ng, qayta uruning!", reply_markup=main_menu())
             save_last_request(user_id, subject, grade, topic)
 
         set_state(user_id, None)
