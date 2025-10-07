@@ -1,48 +1,29 @@
 # handlers/admin.py
-
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import html, logging
 from utils.db import (
     set_premium, block_user, get_users_count,
-    get_pending_payments, approve_payment,
-    get_user_id_by_username, get_last_request
+    get_pending_payments, approve_payment, get_payment_by_id, reject_payment
 )
-from utils.openai_api import generate_conspect
-from utils.docx_generator import create_docx
 from config import ADMIN_ID
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 def is_admin(msg: types.Message) -> bool:
     return msg.from_user.id == ADMIN_ID
 
-# --- Admin komandalar ---
-@router.message(Command("admin"))
-async def admin_help(msg: types.Message):
-    if not is_admin(msg):
-        return await msg.answer("⛔ Siz administrator emassiz.")
-    await msg.answer(
-        "🔐 *Admin buyruqlari:*\n\n"
-        "/payments — Kutilayotgan to‘lovlar\n"
-        "/users — Foydalanuvchilar soni\n"
-        "/approve @username — Username bo‘yicha premium qilish\n"
-        "/block @username — Username bo‘yicha bloklash\n",
-        parse_mode="Markdown"
-    )
-
-# --- Payment ro‘yxati ---
 @router.message(Command("payments"))
 async def payments_handler(msg: types.Message):
     if not is_admin(msg): return
-
     payments = get_pending_payments()
     if not payments:
         return await msg.answer("✅ Hozircha kutilayotgan to‘lovlar yo‘q.")
-
     for p in payments:
         payment_id, user_id, username, photo_id, approved, created_at = p
-
+        display_user = f"@{html.escape(username)}" if username else f"user_id: {user_id}"
         buttons = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{payment_id}"),
@@ -50,88 +31,127 @@ async def payments_handler(msg: types.Message):
             ],
             [
                 InlineKeyboardButton(text="⛔ Bloklash", callback_data=f"block_{user_id}"),
-                InlineKeyboardButton(text="📩 Bog‘lanish", url=f"https://t.me/{username}")
+                InlineKeyboardButton(text="📩 Bog‘lanish", url=f"https://t.me/{username}" if username else f"tg://user?id={user_id}")
             ]
         ])
+        try:
+            await msg.answer_photo(
+                photo=photo_id,
+                caption=(
+                    f"💳 <b>To‘lov cheki</b>\n\n"
+                    f"👤 {display_user}\n"
+                    f"🆔 ID: <code>{user_id}</code>\n"
+                    f"📎 Payment ID: <code>{payment_id}</code>"
+                ),
+                parse_mode="HTML",
+                reply_markup=buttons
+            )
+        except Exception:
+            # fallback if answer_photo signature differs
+            await msg.answer(f"📎 Payment ID: {payment_id} — @{username}", reply_markup=buttons)
 
-        await msg.answer_photo(
-            photo_id,
-            caption=(
-                f"💳 *To‘lov cheki*\n"
-                f"👤 @{username}\n"
-                f"🆔 User ID: `{user_id}`\n"
-                f"📎 Payment ID: `{payment_id}`"
-            ),
-            parse_mode="Markdown",
-            reply_markup=buttons
-        )
-
-# --- Tasdiqlash ---
 @router.callback_query(F.data.startswith("approve_"))
 async def approve_callback(callback: types.CallbackQuery):
-    payment_id = int(callback.data.replace("approve_", ""))
-    payments = get_pending_payments()
-    payment = next((p for p in payments if p[0] == payment_id), None)
+    if callback.from_user.id != ADMIN_ID:
+        return await callback.answer("⛔ Siz admin emassiz.", show_alert=True)
 
+    try:
+        payment_id = int(callback.data.split("_", 1)[1])
+    except Exception:
+        return await callback.answer("❌ Noto‘g‘ri payment id.", show_alert=True)
+
+    payment = get_payment_by_id(payment_id)
     if not payment:
-        return await callback.answer("❌ To‘lov allaqachon ko‘rib chiqilgan.")
+        return await callback.answer("❌ To‘lov allaqachon ko‘rib chiqilgan yoki topilmadi.", show_alert=True)
+
+    # payment: (id, user_id, username, photo_id, approved, created_at)
+    if payment[4] == 1:
+        return await callback.answer("❌ Bu to‘lov allaqachon tasdiqlangan.", show_alert=True)
 
     user_id = payment[1]
-    username = payment[2]
+    username = payment[2] or ""
 
-    # DB yangilash
+    # tasdiqlash
     approve_payment(payment_id)
     set_premium(user_id, 1)
 
-    # Admin uchun
-    await callback.message.edit_caption(
-        f"✅ *Tasdiqlandi!*\n👤 @{username}\n🆔 User ID: `{user_id}`\n🎖 Premium faollashtirildi.",
-        parse_mode="Markdown"
+    # captionni yangilash (HTML)
+    caption = (
+        f"✅ <b>Tasdiqlandi!</b>\n\n"
+        f"👤 @{html.escape(username)}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"🎖 Premium faollashtirildi."
     )
+    try:
+        await callback.message.edit_caption(caption, parse_mode="HTML")
+    except Exception as e:
+        logger.exception("edit_caption xato: %s", e)
+
+    # foydalanuvchini xabardor qilish
+    try:
+        await callback.message.bot.send_message(
+            user_id,
+            "✅ Sizning to‘lovingiz tasdiqlandi va Premium aktivlashtirildi. Endi to'liq .docx fayllarni yuklab olishingiz mumkin."
+        )
+    except Exception as e:
+        logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
+
     await callback.answer("✅ Tasdiqlandi")
 
-    # Foydalanuvchiga xabar
-    await callback.bot.send_message(
-        user_id,
-        "🎉 Sizning premiumingiz faollashtirildi!\nEndi to‘liq konspektlarni yuklab olishingiz mumkin ✅"
-    )
-
-    # Agar oxirgi preview bo‘lsa — qayta yuborish
-    last_req = get_last_request(user_id)
-    if last_req:
-        subject, grade, topic = last_req
-        conspect = generate_conspect(subject, grade, topic)
-        filename = create_docx(conspect, f"{user_id}_{subject}_{topic}.docx")
-        await callback.bot.send_document(
-            user_id,
-            types.FSInputFile(filename),
-            caption=f"♻️ Sizning oxirgi konspektingiz qayta yuborildi:\n\n📘 {subject}, {grade}-sinf\n📝 {topic}"
-        )
-
-# --- Rad etish ---
 @router.callback_query(F.data.startswith("reject_"))
 async def reject_callback(callback: types.CallbackQuery):
-    await callback.message.edit_caption(
-        "❌ *Rad etildi.* Admin tomonidan ko‘rib chiqildi.",
-        parse_mode="Markdown"
-    )
+    if callback.from_user.id != ADMIN_ID:
+        return await callback.answer("⛔ Siz admin emassiz.", show_alert=True)
+
+    try:
+        payment_id = int(callback.data.split("_", 1)[1])
+    except:
+        return await callback.answer("❌ Noto‘g‘ri payment id.", show_alert=True)
+
+    payment = get_payment_by_id(payment_id)
+    if not payment:
+        return await callback.answer("❌ To‘lov topilmadi yoki allaqachon ko‘rib chiqilgan.", show_alert=True)
+
+    # DB-da rad etilgan deb belgilash
+    reject_payment(payment_id)
+
+    try:
+        await callback.message.edit_caption("❌ <b>Rad etildi.</b> Admin tomonidan rad etildi.", parse_mode="HTML")
+    except Exception as e:
+        logger.exception("edit_caption xato: %s", e)
+
+    # foydalanuvchiga xabar (ixtiyoriy)
+    try:
+        await callback.message.bot.send_message(
+            payment[1],
+            "❌ To‘lovingiz ma'lum sabablarga ko'ra rad etildi. Iltimos, admin bilan bog'laning."
+        )
+    except Exception as e:
+        logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
+
     await callback.answer("❌ Rad etildi")
 
-# --- Bloklash ---
 @router.callback_query(F.data.startswith("block_"))
 async def block_callback(callback: types.CallbackQuery):
-    user_id = int(callback.data.replace("block_", ""))
+    if callback.from_user.id != ADMIN_ID:
+        return await callback.answer("⛔ Siz admin emassiz.", show_alert=True)
+
+    try:
+        user_id = int(callback.data.split("_", 1)[1])
+    except:
+        return await callback.answer("❌ Noto‘g‘ri user id.", show_alert=True)
+
     block_user(user_id)
 
-    await callback.message.edit_caption(
-        "⛔ *Foydalanuvchi bloklandi.*",
-        parse_mode="Markdown"
-    )
-    await callback.answer("⛔ Bloklandi")
+    try:
+        await callback.message.edit_caption("⛔ <b>Foydalanuvchi bloklandi.</b>", parse_mode="HTML")
+    except Exception as e:
+        logger.exception("edit_caption xato: %s", e)
 
-# --- Foydalanuvchilar soni ---
-@router.message(Command("users"))
-async def users_handler(msg: types.Message):
-    if not is_admin(msg): return
-    count = get_users_count()
-    await msg.answer(f"👥 Foydalanuvchilar soni: {count}")
+    # foydalanuvchiga xabar
+    try:
+        await callback.message.bot.send_message(user_id, "⛔ Siz administrator tomonidan bloklandingiz.")
+    except Exception as e:
+        logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
+
+    await callback.answer("⛔ Bloklandi")
