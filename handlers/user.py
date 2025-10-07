@@ -7,23 +7,23 @@ from utils.db import (
     get_history, set_state, get_state, set_subject, get_subject,
     set_grade, get_grade, save_last_request
 )
-from utils.openai_api import generate_conspect
+from utils.openai_api import generate_conspect, generate_lesson_plan
 from utils.docx_generator import create_named_docx, get_preview
-import os
-import re
+import os, re
 
 router = Router()
 
-# ====== Asosiy Menyu ======
+# === Asosiy Menyu ===
 def main_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📄 Yangi Konspekt"), KeyboardButton(text="📂 Mening konspektlarim")]
+            [KeyboardButton(text="📄 Yangi Konspekt"), KeyboardButton(text="📘 Dars ishlanma yaratish")],
+            [KeyboardButton(text="📂 Mening konspektlarim")]
         ],
         resize_keyboard=True
     )
 
-# ====== Fan tanlash ======
+# === Fan menyusi ===
 def subject_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -37,7 +37,7 @@ def subject_menu():
         resize_keyboard=True
     )
 
-# ====== Sinf tanlash ======
+# === Sinf menyusi ===
 def grade_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -47,20 +47,29 @@ def grade_menu():
         resize_keyboard=True
     )
 
-# ====== Fayl nomini xavfsiz qilish ======
+# === Fayl nomini xavfsiz qilish ===
 def _sanitize_filename(text: str) -> str:
     safe = re.sub(r"[^\w\- ]+", "", text, flags=re.UNICODE).strip().replace(" ", "_")
     return safe or "topic"
 
-# ====== Start ======
+# === START ===
 @router.message(Command("start"))
 async def start_handler(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
     if is_blocked(msg.from_user.id):
         return await msg.answer("⛔ Sizning profilingiz bloklangan.")
-    await msg.answer("🎓 Assalomu alaykum!\n\nSizga qulay tarzda dars uchun tayyor, tartibli va metodik konspektlar tuzib beruvchi sun’iy intellekt yordamchisiga xush kelibsiz! 🤖\n\n📘 Bot imkoniyatlari:\n✨ Istalgan fan bo‘yicha konspekt yaratish\n✨ 1–11-sinflar uchun to‘liq dars tuzilmasi\n✨ Formulalar, misollar va baholash mezonlari bilan\n✨ Fikrlaringizga mos tarzda o‘zbek tilida ishlab chiqadi\n\n💎 Premium foydalanuvchilar uchun:\n— Konspektning to‘liq versiyasi (.docx fayl ko‘rinishida)\n— O‘z arxivlaringizga kirish imkoniyati\n\n🪄 Boshlash uchun:\n👉 “📄 Yangi Konspekt” tugmasini bosing va fan, sinf hamda mavzuni kiriting.\nBot siz uchun avtomatik tarzda tayyor, bosmaga chiqarishga tayyor konspekt yaratadi!\nQuyidagi menyudan tanlang:", reply_markup=main_menu())
+    await msg.answer(
+        "🎓 Assalomu alaykum!\n\n"
+        "Bu bot sizga o‘qituvchilar uchun tayyor KONSPEKT va DARS ISHLANMA yaratib beradi. 🤖\n\n"
+        "📘 Imkoniyatlar:\n"
+        "— Har qanday fan va sinf uchun tayyor konspektlar\n"
+        "— Dars ishlanma tuzilmasi bo‘yicha to‘liq metodik yordam\n"
+        "— Premium foydalanuvchilar uchun DOCX fayl\n\n"
+        "Boshlash uchun quyidagilardan birini tanlang 👇",
+        reply_markup=main_menu()
+    )
 
-# ====== Yangi Konspekt ======
+# === Yangi Konspekt ===
 @router.message(F.text == "📄 Yangi Konspekt")
 async def new_conspect(msg: types.Message):
     if is_blocked(msg.from_user.id):
@@ -68,71 +77,97 @@ async def new_conspect(msg: types.Message):
     await msg.answer("Fan nomini tanlang:", reply_markup=subject_menu())
     set_state(msg.from_user.id, "subject")
 
-# ====== Fan tanlash ======
-@router.message(F.text.in_(["Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika", "Geografiya", "Ingliz tili", "Tasviriy san’at", "Informatika", "Boshqa fan"]))
+# === Yangi Dars Ishlanma ===
+@router.message(F.text == "📘 Dars ishlanma yaratish")
+async def new_lesson_plan_start(msg: types.Message):
+    if is_blocked(msg.from_user.id):
+        return await msg.answer("⛔ Siz bloklangansiz.")
+    await msg.answer("Fan nomini tanlang (dars ishlanma uchun):", reply_markup=subject_menu())
+    set_state(msg.from_user.id, "lesson_subject")
+
+# === Fan tanlash ===
+@router.message(F.text.in_(["Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika",
+                            "Geografiya", "Ingliz tili", "Tasviriy san’at", "Informatika", "Boshqa fan"]))
 async def select_subject(msg: types.Message):
     state = get_state(msg.from_user.id)
-    if state == "subject":
+    if state in ["subject", "lesson_subject"]:
         if msg.text == "Boshqa fan":
-            await msg.answer("Iltimos, fan nomini matn ko‘rinishida kiriting:")
+            await msg.answer("Iltimos, fan nomini matn shaklida kiriting:")
         else:
             set_subject(msg.from_user.id, msg.text)
-            set_state(msg.from_user.id, "grade")
+            set_state(msg.from_user.id, "lesson_grade" if state == "lesson_subject" else "grade")
             await msg.answer("Sinfni tanlang:", reply_markup=grade_menu())
 
-# ====== Custom fan / sinf / mavzu ======
+# === Custom fan / sinf / mavzu ===
 @router.message(F.text)
 async def custom_or_grade_handler(msg: types.Message):
-    state = get_state(msg.from_user.id)
+    user_id = msg.from_user.id
+    state = get_state(user_id)
 
-    # --- Custom fan ---
-    if state == "subject" and msg.text not in ["Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika", "Geografiya", "Ingliz tili", "Tasviriy san’at", "Informatika", "Boshqa fan"]:
-        set_subject(msg.from_user.id, msg.text)
-        set_state(msg.from_user.id, "grade")
+    # Custom fan
+    if state in ["subject", "lesson_subject"] and msg.text not in [
+        "Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika",
+        "Geografiya", "Ingliz tili", "Tasviriy san’at", "Informatika", "Boshqa fan"
+    ]:
+        set_subject(user_id, msg.text)
+        set_state(user_id, "lesson_grade" if state == "lesson_subject" else "grade")
         return await msg.answer("Sinfni tanlang:", reply_markup=grade_menu())
 
-    # --- Sinf ---
-    if state == "grade" and msg.text.isdigit() and 1 <= int(msg.text) <= 11:
-        set_grade(msg.from_user.id, msg.text)
-        set_state(msg.from_user.id, "topic")
+    # Sinfni tanlash
+    if state in ["grade", "lesson_grade"] and msg.text.isdigit() and 1 <= int(msg.text) <= 11:
+        set_grade(user_id, msg.text)
+        set_state(user_id, "lesson_topic" if state == "lesson_grade" else "topic")
         return await msg.answer("Endi mavzuni kiriting:", reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="🔙 Bekor qilish")]], resize_keyboard=True
         ))
 
-    # --- Mavzu ---
+    # Konspekt mavzusi
     if state == "topic":
         if msg.text == "🔙 Bekor qilish":
-            set_state(msg.from_user.id, None)
+            set_state(user_id, None)
             return await msg.answer("Bekor qilindi.", reply_markup=main_menu())
 
-        subject = get_subject(msg.from_user.id)
-        grade = get_grade(msg.from_user.id)
-        topic = msg.text
+        subject, grade, topic = get_subject(user_id), get_grade(user_id), msg.text
+        topic_for_file = _sanitize_filename(topic[:60])
 
-        topic_for_file = "Kop_mavzular" if "\n" in topic or len(topic) > 50 else _sanitize_filename(topic)
-
-        if is_premium(msg.from_user.id):
-            conspect = generate_conspect(subject, grade, topic)
-            filename = create_named_docx(conspect, subject, topic_for_file, msg.from_user.id)
-            save_history(msg.from_user.id, subject, grade, topic, filename)
-            await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspektingiz tayyor!", reply_markup=main_menu())
-
-            try:
-                os.remove(filename)
-            except:
-                pass
+        if is_premium(user_id):
+            text = generate_conspect(subject, grade, topic)
+            filename = create_named_docx(text, subject, topic_for_file, user_id)
+            save_history(user_id, subject, grade, topic, filename)
+            await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspekt tayyor!", reply_markup=main_menu())
+            os.remove(filename)
         else:
-            conspect = generate_conspect(subject, grade, topic)
-            preview = get_preview(conspect, 20)
-            await msg.answer(
-                "📝 Konspekt preview (20%):\n\n" + preview + "\n\nTo‘liq versiya uchun premium bo‘ling.\n9860 6067 4424 9933\n5000 UZS",
-                reply_markup=main_menu()
-            )
-            save_last_request(msg.from_user.id, subject, grade, topic)
+            text = generate_conspect(subject, grade, topic)
+            preview = get_preview(text, 20)
+            await msg.answer(f"📝 Konspekt preview (20%):\n\n{preview}\n\nTo‘liq versiya uchun premium bo‘ling.", reply_markup=main_menu())
+            save_last_request(user_id, subject, grade, topic)
 
-        set_state(msg.from_user.id, None)
+        set_state(user_id, None)
 
-# ====== Tarix ======
+    # Dars ishlanma mavzusi
+    if state == "lesson_topic":
+        if msg.text == "🔙 Bekor qilish":
+            set_state(user_id, None)
+            return await msg.answer("Bekor qilindi.", reply_markup=main_menu())
+
+        subject, grade, topic = get_subject(user_id), get_grade(user_id), msg.text
+        topic_for_file = _sanitize_filename(topic[:60])
+
+        if is_premium(user_id):
+            text = generate_lesson_plan(subject, grade, topic)
+            filename = create_named_docx(text, subject, topic_for_file + "_DarsIshlanma", user_id)
+            save_history(user_id, subject, grade, topic, filename)
+            await msg.answer_document(types.FSInputFile(filename), caption="✅ Dars ishlanma tayyor!", reply_markup=main_menu())
+            os.remove(filename)
+        else:
+            text = generate_lesson_plan(subject, grade, topic)
+            preview = get_preview(text, 20)
+            await msg.answer(f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\nTo‘liq versiya uchun premium bo‘ling.", reply_markup=main_menu())
+            save_last_request(user_id, subject, grade, topic)
+
+        set_state(user_id, None)
+
+# === Mening konspektlarim ===
 @router.message(F.text == "📂 Mening konspektlarim")
 async def history_menu(msg: types.Message):
     user_id = msg.from_user.id
@@ -147,31 +182,28 @@ async def history_menu(msg: types.Message):
     text = "📂 Sizning konspektlaringiz:\n\n"
     for i, item in enumerate(history, start=1):
         text += f"{i}. {item[2]} / {item[3]}-sinf — {item[4]}\n"
+    text += "\nQayta yuklab olish uchun raqam yuboring (masalan: 2)"
 
-    text += "\nQayta yuklab olish uchun raqam yuboring. Masalan: 2"
-    await msg.answer(
-        text,
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="🔙 Orqaga")]],
-            resize_keyboard=True
-        )
-    )
+    await msg.answer(text, reply_markup=ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🔙 Orqaga")]], resize_keyboard=True
+    ))
     set_state(user_id, "history_select")
 
-# ====== Tarixdan yuklab olish ======
+# === Tarixdan yuklab olish ===
 @router.message(F.text.regexp(r"^\d+$"))
 async def history_select(msg: types.Message):
-    if get_state(msg.from_user.id) != "history_select":
+    user_id = msg.from_user.id
+    if get_state(user_id) != "history_select":
         return
 
     index = int(msg.text)
-    items = get_history(msg.from_user.id)
+    items = get_history(user_id)
     if not items or index < 1 or index > len(items):
         return await msg.answer("❌ Noto‘g‘ri raqam. Qayta urinib ko‘ring.")
 
-    file_path = items[index - 1][5]  # file_path
+    file_path = items[index - 1][5]
     if not os.path.exists(file_path):
         return await msg.answer("⚠️ Fayl topilmadi. U o‘chirilgan bo‘lishi mumkin.", reply_markup=main_menu())
 
-    await msg.answer_document(types.FSInputFile(file_path), caption="♻️ Arxivdan qayta yuklab olindi.", reply_markup=main_menu())
-    set_state(msg.from_user.id, None)
+    await msg.answer_document(types.FSInputFile(file_path), caption="♻️ Arxivdan yuklab olindi.", reply_markup=main_menu())
+    set_state(user_id, None)
