@@ -73,11 +73,11 @@ def generate_conspect(subject: str, grade: str, topic: str) -> str:
 # === DARS ISHLANMA (MISOLLARGA BO‘LAK-BO‘LAK YO‘NALGAN VARIANT) ===
 def generate_lesson_plan(subject: str, grade: str, topic: str) -> str:
     """
-    Dars ishlanma: har bir qadamda tushuntirish va juda ko‘p misollar, topshiriqlar bilan.
-    Fayl katta hajmda bo‘lishi kerak (~500KB).
+    Dars ishlanma: faqat tushuntirish, misollar, izohli formulalar va topshiriqlar bilan.
+    Har bir formula oddiy o‘qituvchi uchun tushunarli tarzda yoziladi.
     """
     client = _get_client()
-    if not client:
+    if client is None:
         return "❌ Dars ishlanma yaratishda xatolik: OPENAI API kaliti topilmadi."
 
     prompt = f"""
@@ -86,42 +86,48 @@ Sinf: {grade}
 Mavzu: {topic}
 
 🎓 MAQSAD:
-Sinf uchun juda batafsil DARS ISHLANMA tuzing.
-Faqat tushuntirish, misollar, yechimlar va topshiriqlar bo‘lsin.
-Nazariy qismlar qisqagina, lekin har bir qadam amaliy misol va izoh bilan to‘ldirilgan bo‘lishi shart.
-Matn hajmi katta bo‘lishi kerak (ko‘p misollar, ko‘p topshiriqlar).
+Oddiy o‘qituvchi uchun to‘liq, tushunarli DARS ISHLANMA yarating.
+Nazariya qisqa bo‘lsin, lekin har bir qadamda batafsil tushuntirish, izoh va misollar juda ko‘p bo‘lsin.
+Formulalar matn ko‘rinishida emas, **tushuntirib yozilsin**:
+masalan, "S = a × b" emas, balki "To‘g‘ri to‘rtburchakning yuzasi uzunlik bilan eni ko‘paytmasiga teng (S = a × b)" tarzda.
 
-📘 STRUKTURA:
+📘 DARS ISHLANMA STRUKTURASI:
 
 1. Mavzu nomi
-2. Kirish (1-2 gap)
-3. Asosiy tushuntirish:
-   - Har bir tushunchani alohida misol bilan tushuntiring
-   - Har 2–3 jumladan keyin yangi misol keltiring
-   - Har misolni yechim bilan yozing
-   - Har misoldan keyin 2–3 o‘xshash topshiriq yarating
+2. Kirish (mavzuning ahamiyati haqida 2–3 gap)
+3. Asosiy qism:
+   - Har bir tushunchani alohida tushuntiring
+   - Har bir tushuncha uchun 3–5 ta misol yozing
+   - Har misolni izoh bilan yeching
+   - Formulalar berilganda ularning ma’nosini odamlarga tushunarli qilib yozing
+   - Har bir formula uchun real hayotdan 1–2 misol keltiring
 4. Mustaqil ishlash uchun mashqlar (kamida 10 ta)
-5. Yechimlar (bosqichma-bosqich tushuntirilgan holda)
-6. Qo‘shimcha topshiriqlar (ijodiy yoki murakkabroq)
+5. Yechimlar (bosqichma-bosqich)
+6. Qo‘shimcha topshiriqlar (murakkabroq misollar)
 7. Uyga vazifa (kamida 5 ta topshiriq)
 8. Yakuniy xulosa (1–2 gap)
 
 🧮 TALABLAR:
-- Juda ko‘p misollar yozing, har biri to‘liq tushuntirilgan bo‘lsin.
-- Har bir formula matn ko‘rinishida yozilsin (masalan, S = a * b)
-- Har bir tushunchaga kamida 3 misol yozing.
-- “Misol:”, “Yechim:”, “Topshiriq:” sarlavhalarini aniq ko‘rsating.
-- Dars ishlanma hajmi katta bo‘lishi uchun kamida 1000+ satrga yaqin matn hosil qiling.
+- Har bir “Formula” tushuntirilgan bo‘lsin.
+- Har 2–3 misoldan keyin “Xulosa:” shaklida izoh yozilsin.
+- Juda batafsil yozing, har bir misol tushunarli bo‘lishi kerak.
+- Hajmi katta bo‘lsin (500KB ga yaqin matn).
 """
 
     try:
         resp = client.chat.completions.create(
             model=DEFAULT_MODEL,
             messages=[
-                {"role": "system", "content": "Siz O‘zbekiston o‘qituvchilari uchun tajribali metodist-o‘qituvchisiz."},
+                {
+                    "role": "system",
+                    "content": (
+                        "Siz O‘zbekiston maktablari uchun dars ishlanmalar tayyorlovchi metodist-o‘qituvchisiz. "
+                        "Sizdan kutilgan narsa: o‘qituvchi va o‘quvchi uchun amaliy, izohli, misollar bilan boy dars ishlanma yozish."
+                    ),
+                },
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.7,  # Ko‘proq ijodiylik
+            temperature=0.75,  # yanada ijodiyroq, tabiiy matn
             max_tokens=MAX_TOKENS,
         )
         return resp.choices[0].message.content.strip()
