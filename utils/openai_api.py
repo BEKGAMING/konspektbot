@@ -73,63 +73,63 @@ def generate_conspect(subject: str, grade: str, topic: str) -> str:
 # === DARS ISHLANMA (MISOLLARGA BO‘LAK-BO‘LAK YO‘NALGAN VARIANT) ===
 def generate_lesson_plan(subject: str, grade: str, topic: str) -> str:
     """
-    Dars ishlanma: faqat tushuntirish, misollar, izohli formulalar va topshiriqlar bilan.
-    Har bir formula oddiy o‘qituvchi uchun tushunarli tarzda yoziladi.
+    Fan, sinf va mavzu asosida o‘qituvchilar uchun DARS ISHLANMA tuzadi.
+    Har bir bosqichda metodik rang-baranglik (interfaol usullar, amaliy topshiriqlar, refleksiya va h.k.) mavjud.
     """
     client = _get_client()
     if client is None:
-        return "❌ Dars ishlanma yaratishda xatolik: OPENAI API kaliti topilmadi."
+        return "Dars ishlanma yaratishda xatolik yuz berdi: OPENAI API kaliti topilmadi."
 
     prompt = f"""
 Fan: {subject}
 Sinf: {grade}
 Mavzu: {topic}
 
-🎓 MAQSAD:
-Oddiy o‘qituvchi uchun to‘liq, tushunarli DARS ISHLANMA yarating.
-Nazariya qisqa bo‘lsin, lekin har bir qadamda batafsil tushuntirish, izoh va misollar juda ko‘p bo‘lsin.
-Formulalar matn ko‘rinishida emas, **tushuntirib yozilsin**:
-masalan, "S = a × b" emas, balki "To‘g‘ri to‘rtburchakning yuzasi uzunlik bilan eni ko‘paytmasiga teng (S = a × b)" tarzda.
-
-📘 DARS ISHLANMA STRUKTURASI:
+🎓 DARS ISHLANMA TUZILMASI (METODIK RANG-BARANGLIK BILAN):
 
 1. Mavzu nomi
-2. Kirish (mavzuning ahamiyati haqida 2–3 gap)
-3. Asosiy qism:
-   - Har bir tushunchani alohida tushuntiring
-   - Har bir tushuncha uchun 3–5 ta misol yozing
-   - Har misolni izoh bilan yeching
-   - Formulalar berilganda ularning ma’nosini odamlarga tushunarli qilib yozing
-   - Har bir formula uchun real hayotdan 1–2 misol keltiring
-4. Mustaqil ishlash uchun mashqlar (kamida 10 ta)
-5. Yechimlar (bosqichma-bosqich)
-6. Qo‘shimcha topshiriqlar (murakkabroq misollar)
-7. Uyga vazifa (kamida 5 ta topshiriq)
-8. Yakuniy xulosa (1–2 gap)
+2. Maqsadlar:
+   - Ta’limiy
+   - Tarbiyaviy
+   - Rivojlantiruvchi
+3. Dars turi (yangi bilim, aralash, amaliy, mustahkamlash va h.k.)
+4. Jihozlar va ko‘rgazmali vositalar
+5. Metodik yondashuvlar:
+   - Aqliy hujum
+   - Blits-so‘rov
+   - Klaster usuli
+   - Juftlikda ishlash
+   - Rolli o‘yin
+   - Refleksiya texnikalari (masalan: "Men bugun bildimki...", "3 ta muhim g‘oya")
+6. Darsning borishi (bosqichma-bosqich):
+   - Kirish qismi: motivatsiya, aqliy hujum, maqsadni aniqlash
+   - Asosiy qism: yangi mavzuni bayon qilish (misollar, izohlar, formulalar tushunarli qilib), interfaol topshiriqlar
+   - Mustahkamlash: amaliy mashqlar, testlar, savol-javoblar, muammoli holatlar
+   - Yakuniy qism: refleksiya, baholash, umumlashtirish
+   - Uyga vazifa: ijodiy topshiriq yoki amaliy mashq
+7. Kutilayotgan natijalar
+8. Baholash mezonlari
+9. Qo‘shimcha topshiriqlar (ixtiyoriy): loyiha, rasm, tajriba, dramatizatsiya va boshqalar
 
-🧮 TALABLAR:
-- Har bir “Formula” tushuntirilgan bo‘lsin.
-- Har 2–3 misoldan keyin “Xulosa:” shaklida izoh yozilsin.
-- Juda batafsil yozing, har bir misol tushunarli bo‘lishi kerak.
-- Hajmi katta bo‘lsin (500KB ga yaqin matn).
+📌 TALABLAR:
+- Dars ishlanmada misollar, tushuntirishlar va o‘quvchi faoliyatini batafsil yozing.
+- Formulalarni o‘qituvchilar uchun tushunarli, izohli tarzda yozing (masalan: “Bu yerda S — yuzasi, a va b — tomonlar uzunligi”).
+- Har bosqichda kamida 2 ta interfaol metod yoki o‘yinli topshiriq bo‘lsin.
+- Umumiy hajmi katta bo‘lishi kerak (kamida 500 KB atrofida matn chiqsin).
+- Rasmiy, metodik va o‘qituvchi uchun qulay tilda yozilsin.
 """
 
     try:
         resp = client.chat.completions.create(
             model=DEFAULT_MODEL,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Siz O‘zbekiston maktablari uchun dars ishlanmalar tayyorlovchi metodist-o‘qituvchisiz. "
-                        "Sizdan kutilgan narsa: o‘qituvchi va o‘quvchi uchun amaliy, izohli, misollar bilan boy dars ishlanma yozish."
-                    ),
-                },
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
             ],
-            temperature=0.75,  # yanada ijodiyroq, tabiiy matn
-            max_tokens=MAX_TOKENS,
+            temperature=float(TEMPERATURE),
+            max_tokens=int(MAX_TOKENS)
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        return f"❌ Dars ishlanma yaratishda xatolik: {str(e)}"
+        return f"Dars ishlanma yaratishda xatolik yuz berdi: {str(e)}"
+
