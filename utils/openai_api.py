@@ -247,10 +247,10 @@ Iltimos, quyidagi tuzilma bo'yicha batafsil DARS ISHLANMA yozing:
 4) Metodik yondashuvlar (kamida 4 xil interfaol metod bilan)
 5) Darsning borishi: (kirish, yangi mavzu, misollar bilan bayon, amaliy mashqlar, mustahkamlash)
 6) Har bosqich uchun o'qituvchi va o'quvchi faoliyati (ancha batafsil)
-7) Kamida 8 misol (turli murakkablikda) va ularning yechimlari
+7) Kamida 10 ta misol (turli murakkablikda) va ularning yechimlari
 8) Mustahkamlash uchun 10 ta topshiriq (turli darajada)
 9) Baholash mezonlari (kriteriyalar)
-10) Uyga vazifa: 3-4 turdagi topshiriq
+10) Uyga vazifa: 3-4 turdagi topshiriq har birida 10 ta misol
 
 Eslatma:
 - FORMULALARNI oddiy, tushunarli shaklda yozing.
