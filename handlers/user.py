@@ -172,8 +172,9 @@ async def custom_or_grade_handler(msg: types.Message):
 async def history_menu(msg: types.Message):
     user_id = msg.from_user.id
 
-    if not is_premium(user_id):
-        return await msg.answer("❌ Bu bo‘lim faqat premium foydalanuvchilar uchun.", reply_markup=main_menu())
+    # --- Premium cheklovini olib tashlaymiz (agar xohlasangiz qayta yoqish mumkin)
+    # if not is_premium(user_id):
+    #     return await msg.answer("❌ Bu bo‘lim faqat premium foydalanuvchilar uchun.", reply_markup=main_menu())
 
     history = get_history(user_id)
     if not history:
@@ -181,29 +182,60 @@ async def history_menu(msg: types.Message):
 
     text = "📂 Sizning konspektlaringiz:\n\n"
     for i, item in enumerate(history, start=1):
-        text += f"{i}. {item[2]} / {item[3]}-sinf — {item[4]}\n"
-    text += "\nQayta yuklab olish uchun raqam yuboring (masalan: 2)"
+        subject = item[2] or "Noma’lum fan"
+        grade = item[3] or "?"
+        topic = item[4] or "—"
+        text += f"{i}. {subject} / {grade}-sinf — {topic}\n"
 
-    await msg.answer(text, reply_markup=ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🔙 Orqaga")]], resize_keyboard=True
-    ))
+    text += "\n📎 Qayta yuklab olish uchun raqam yuboring (masalan: 2)\n"
+    text += "🔙 Orqaga qaytish uchun 'Orqaga' tugmasini bosing."
+
+    await msg.answer(
+        text,
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="🔙 Orqaga")]],
+            resize_keyboard=True
+        )
+    )
     set_state(user_id, "history_select")
+
 
 # === Tarixdan yuklab olish ===
 @router.message(F.text.regexp(r"^\d+$"))
 async def history_select(msg: types.Message):
     user_id = msg.from_user.id
     if get_state(user_id) != "history_select":
-        return
+        return  # boshqa holatlarda javob berilmaydi
 
     index = int(msg.text)
     items = get_history(user_id)
     if not items or index < 1 or index > len(items):
         return await msg.answer("❌ Noto‘g‘ri raqam. Qayta urinib ko‘ring.")
 
-    file_path = items[index - 1][5]
-    if not os.path.exists(file_path):
-        return await msg.answer("⚠️ Fayl topilmadi. U o‘chirilgan bo‘lishi mumkin.", reply_markup=main_menu())
+    file_path = items[index - 1][5]  # 6-ustun: file_path
 
-    await msg.answer_document(types.FSInputFile(file_path), caption="♻️ Arxivdan yuklab olindi.", reply_markup=main_menu())
+    # --- Fayl mavjudligini tekshirish
+    if not os.path.exists(file_path):
+        return await msg.answer(
+            "⚠️ Fayl topilmadi. Ehtimol u o‘chirilgan.\n"
+            "Yangi konspekt yaratib ko‘ring yoki boshqa faylni tanlang.",
+            reply_markup=main_menu()
+        )
+
+    try:
+        await msg.answer_document(
+            types.FSInputFile(file_path),
+            caption="♻️ Arxivdan qayta yuklab olindi.",
+            reply_markup=main_menu()
+        )
+    except Exception as e:
+        await msg.answer(f"❌ Faylni yuborishda xatolik: {str(e)}", reply_markup=main_menu())
+
     set_state(user_id, None)
+
+
+# === Orqaga qaytish ===
+@router.message(F.text == "🔙 Orqaga")
+async def go_back(msg: types.Message):
+    set_state(msg.from_user.id, None)
+    await msg.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu())
