@@ -88,12 +88,51 @@ async def new_lesson_plan_start(msg: types.Message):
     set_state(msg.from_user.id, "lesson_subject")
 
 # === Metodik maslahat ===
+from utils.openai_api import generate_methodical_advice
+
 @router.message(F.text == "📙 Metodik maslahat")
-async def ask_methodical_advice(msg: types.Message):
-    if is_blocked(msg.from_user.id):
+async def methodical_start(msg: types.Message):
+    user_id = msg.from_user.id
+    if is_blocked(user_id):
         return await msg.answer("⛔ Siz bloklangansiz.")
     await msg.answer("Fan nomini kiriting (masalan: Matematika):")
-    set_state(msg.from_user.id, "method_subject")
+    set_state(user_id, "method_subject")
+
+@router.message(F.text, F.text.len() > 0)
+async def methodical_handler(msg: types.Message):
+    user_id = msg.from_user.id
+    state = get_state(user_id)
+
+    # 1. Fan nomi
+    if state == "method_subject":
+        set_subject(user_id, msg.text)
+        set_state(user_id, "method_grade")
+        return await msg.answer("Sinfni kiriting (masalan: 7):")
+
+    # 2. Sinf
+    if state == "method_grade":
+        if not msg.text.isdigit() or not (1 <= int(msg.text) <= 11):
+            return await msg.answer("Iltimos, sinfni 1 dan 11 gacha raqam bilan yozing.")
+        set_grade(user_id, msg.text)
+        set_state(user_id, "method_topic")
+        return await msg.answer("Mavzuni kiriting (masalan: Kasrlarni taqqoslash):")
+
+    # 3. Mavzu
+    if state == "method_topic":
+        subject = get_subject(user_id)
+        grade = get_grade(user_id)
+        topic = msg.text
+
+        await msg.answer("⏳ Metodik maslahat tayyorlanmoqda, biroz kuting...")
+
+        try:
+            advice = generate_methodical_advice(subject, grade, topic)
+            set_state(user_id, None)
+            await msg.answer(advice, reply_markup=main_menu())
+        except Exception as e:
+            set_state(user_id, None)
+            await msg.answer(f"❌ Xatolik: {str(e)}", reply_markup=main_menu())
+
 
 # === Fan tanlash ===
 @router.message(F.text.in_(["Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika",
