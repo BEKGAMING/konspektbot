@@ -284,3 +284,41 @@ def generate_lesson_plan(subject: str, grade: str, topic: str) -> str:
                 "Iltimos, yangi kalit yarating va `OPENAI_API_KEY` ga joylang."
             )
         return f"Dars ishlanma yaratishda xatolik yuz berdi: {err[:300]}"
+
+def generate_methodical_advice(subject: str, grade: str, topic: str) -> str:
+    """
+    Fan, sinf va mavzu asosida o‘qituvchi uchun metodik tavsiyalar beradi.
+    """
+    client = _get_client()
+    if client is None:
+        return "❌ Metodik maslahat olishda xatolik: API kaliti topilmadi."
+
+    prompt = f"""
+Fan: {subject}
+Sinf: {grade}
+Mavzu: {topic}
+
+🎓 Siz tajribali metodist-o‘qituvchisiz.
+Berilgan mavzu uchun o‘qituvchiga quyidagi ma’lumotlarni yozing:
+1. Tavsiya etiladigan dars metodlari (kamida 5 ta): interfaol, ijodiy, amaliy.
+2. Har bir metod qanday bosqichda samarali ishlatiladi.
+3. Shu mavzuga mos 2 ta o‘yinli yoki interfaol mashq tavsiya qiling.
+4. Amaliy topshiriq yoki loyiha g‘oyasi.
+5. Darsda o‘quvchi faolligini oshirish bo‘yicha maslahatlar.
+6. Metodik xatolarga yo‘l qo‘ymaslik bo‘yicha ogohlantirishlar.
+Matnni soddaligi va amaliyligi bilan yozing.
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": "Siz tajribali pedagog-metodistsiz."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6,
+            max_tokens=MAX_TOKENS
+        )
+        return "📘 " + resp.choices[0].message.content.strip()
+    except Exception as e:
+        return f"❌ Metodik maslahat olishda xatolik yuz berdi: {str(e)}"

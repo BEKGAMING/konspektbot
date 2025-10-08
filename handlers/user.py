@@ -18,7 +18,7 @@ def main_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📄 Yangi Konspekt"), KeyboardButton(text="📘 Dars ishlanma yaratish")],
-            [KeyboardButton(text="📂 Mening konspektlarim")]
+            [KeyboardButton(text="📙 Metodik maslahat"), KeyboardButton(text="📂 Mening konspektlarim")]
         ],
         resize_keyboard=True
     )
@@ -239,3 +239,40 @@ async def history_select(msg: types.Message):
 async def go_back(msg: types.Message):
     set_state(msg.from_user.id, None)
     await msg.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu())
+
+
+from utils.openai_api import generate_methodical_advice
+
+# === Metodik maslahat ===
+@router.message(F.text == "📙 Metodik maslahat")
+async def ask_methodical_advice(msg: types.Message):
+    await msg.answer("Fan nomini kiriting (masalan: Matematika):")
+    set_state(msg.from_user.id, "method_subject")
+
+@router.message()
+async def handle_methodical_inputs(msg: types.Message):
+    state = get_state(msg.from_user.id)
+
+    # 1. Fan
+    if state == "method_subject":
+        set_subject(msg.from_user.id, msg.text)
+        set_state(msg.from_user.id, "method_grade")
+        return await msg.answer("Sinfni kiriting (masalan: 7):")
+
+    # 2. Sinf
+    if state == "method_grade":
+        set_grade(msg.from_user.id, msg.text)
+        set_state(msg.from_user.id, "method_topic")
+        return await msg.answer("Mavzuni kiriting (masalan: Kasrlarni taqqoslash):")
+
+    # 3. Mavzu
+    if state == "method_topic":
+        subject = get_subject(msg.from_user.id)
+        grade = get_grade(msg.from_user.id)
+        topic = msg.text
+
+        await msg.answer("⏳ Metodik maslahat tayyorlanmoqda, biroz kuting...")
+
+        advice = generate_methodical_advice(subject, grade, topic)
+        set_state(msg.from_user.id, None)
+        return await msg.answer(advice, reply_markup=main_menu())
