@@ -1,4 +1,3 @@
-# utils/openai_api.py
 import os
 import re
 import time
@@ -11,20 +10,14 @@ logger.setLevel(logging.INFO)
 
 # === Muhit o‘zgaruvchilari ===
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-4o")  # Sizning .env orqali o'zgartirishingiz mumkin
-try:
-    TEMPERATURE = float(os.getenv("TEMPERATURE", "0.5"))
-except Exception:
-    TEMPERATURE = 0.5
-try:
-    MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4000"))
-except Exception:
-    MAX_TOKENS = 4000
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-4o")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.5"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4000"))
 
-# === OpenAI klientini olish (lazy) ===
+# === OpenAI klienti ===
 def _get_client() -> Optional[OpenAI]:
     if not OPENAI_API_KEY:
-        logger.error("OPENAI_API_KEY mavjud emas (env o'zgaruvchisi).")
+        logger.error("OPENAI_API_KEY topilmadi.")
         return None
     try:
         return OpenAI(api_key=OPENAI_API_KEY)
@@ -32,293 +25,187 @@ def _get_client() -> Optional[OpenAI]:
         logger.exception("OpenAI klientini yaratishda xatolik: %s", e)
         return None
 
-# === LaTeX / matematik ifodalarni sodda qilib chiqaruvchi yordamchi funksiyalar ===
-_SUP_MAP = {
-    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
-    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
-    "-": "⁻", "+": "⁺"
-}
-
+# === Superscript / LaTeX tozalash ===
+_SUP_MAP = {"0": "⁰","1": "¹","2": "²","3": "³","4": "⁴","5": "⁵","6": "⁶","7": "⁷","8": "⁸","9": "⁹","-": "⁻","+": "⁺"}
 def _to_superscript(s: str) -> str:
-    """Matndagi raqamlarni (masalan 12) superscriptga o'giradi (1→¹ 2→²)..."""
-    out = []
-    for ch in s:
-        out.append(_SUP_MAP.get(ch, ch))
-    return "".join(out)
+    return "".join(_SUP_MAP.get(ch, ch) for ch in s)
 
 def _replace_superscripts(text: str) -> str:
-    # Pattern: ^{...} yoki ^x
-    def _braced(m):
-        inner = m.group(1)
-        inner_clean = re.sub(r"\s+", "", inner)
-        return _to_superscript(inner_clean)
-
-    text = re.sub(r"\^\{([^}]+)\}", lambda m: _braced(m), text)
-    # simple: x^2  -> x²
-    text = re.sub(r"([A-Za-z0-9\)])\^([0-9])", lambda m: m.group(1) + _to_superscript(m.group(2)), text)
+    text = re.sub(r"\^\{([^}]+)\}", lambda m: _to_superscript(m.group(1)), text)
+    text = re.sub(r"([A-Za-z0-9\)])\^([0-9])", lambda m: m.group(1)+_to_superscript(m.group(2)), text)
     return text
 
 def _clean_latex(text: str) -> str:
-    """
-    LaTeX va matematik belgilarni oddiy, o'qilishi oson shaklga o'tkazadi.
-    Maqsad: o'qituvchilar uchun oddiy matn yoki unicode belgilar bilan ko'rsatish.
-    """
     if not text:
         return text
-
-    # 1) olib tashlash: \( \), $ $, $$ $$
-    text = re.sub(r"\$\$(.*?)\$\$", r"\1", text, flags=re.S)
-    text = re.sub(r"\$(.*?)\$", r"\1", text, flags=re.S)
-    text = re.sub(r"\\\((.*?)\\\)", r"\1", text, flags=re.S)
-    text = re.sub(r"\\\[(.*?)\\\]", r"\1", text, flags=re.S)
-
-    # 2) oddiy o'rinbosarlar (frac, sqrt, leq, geq, neq, cdot, times, etc.)
-    # \frac{a}{b} -> a/b
-    # Qayd: nested bracelar uchun mukammal parser emas, lekin oddiy hollarda yetadi.
+    text = re.sub(r"\$\$(.*?)\$\$|\$(.*?)\$|\\\((.*?)\\\)|\\\[(.*?)\\\]", lambda m: "".join(x for x in m.groups() if x), text)
     text = re.sub(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"\1/\2", text)
-
-    # \sqrt{...} -> √(...)
     text = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"√(\1)", text)
-
-    # \left, \right ni olib tashlash
-    text = re.sub(r"\\left", "", text)
-    text = re.sub(r"\\right", "", text)
-
-    # asosiy belgi almashtirishlar
-    subs = {
-        r"\\leq": "≤",
-        r"\\geq": "≥",
-        r"\\neq": "≠",
-        r"\\times": "×",
-        r"\\cdot": "·",
-        r"\\pm": "±",
-        r"\\approx": "≈",
-        r"\\to": "→",
-        r"\\rightarrow": "→",
-        r"\\infty": "∞",
-        r"\\degree": "°",
-        r"\\alpha": "α", r"\\beta": "β", r"\\gamma": "γ",
-        r"\\pi": "π",
+    text = re.sub(r"\\left|\\right", "", text)
+    replace_map = {
+        r"\\leq": "≤", r"\\geq": "≥", r"\\neq": "≠", r"\\times": "×", r"\\cdot": "·",
+        r"\\pm": "±", r"\\approx": "≈", r"\\to": "→", r"\\infty": "∞", r"\\degree": "°",
+        r"\\alpha": "α", r"\\beta": "β", r"\\gamma": "γ", r"\\pi": "π"
     }
-    for pat, repl in subs.items():
-        text = re.sub(pat, repl, text)
-
-    # a/b typed fractions: \over not common but we try
-    text = re.sub(r"\\over", "/", text)
-
-    # remove remaining common latex commands like \mathrm{...} or \text{...}
-    text = re.sub(r"\\mathrm\{([^}]+)\}", r"\1", text)
-    text = re.sub(r"\\text\{([^}]+)\}", r"\1", text)
-
-    # braces -> parenthesis where appropriate
-    text = text.replace("{", "(").replace("}", ")")
-
-    # superscripts: ^{2} or ^2 -> show unicode superscripts where possible
+    for pat, rep in replace_map.items():
+        text = re.sub(pat, rep, text)
     text = _replace_superscripts(text)
-
-    # remove leftover backslash-commands if any (e.g. \, \; ) but preserve words
     text = re.sub(r"\\[a-zA-Z]+\s*", "", text)
-
-    # collapse multiple spaces and tidy up spaces around operators
     text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"\s*([=+\-*/×·≥≤≠±≤≥<>])\s*", r" \1 ", text)
-
+    text = re.sub(r"\s*([=+\-*/×·≥≤≠±<>])\s*", r" \1 ", text)
     return text.strip()
 
-# === Promptlar ===
-SYSTEM_PROMPT_CONSPECT = (
-    "Siz O‘zbekiston umumta’lim maktablari uchun metodist-o‘qituvchisiz. "
-    "Foydalanuvchi bergan fan, sinf va mavzu asosida rasmiy konspekt (ish reja) tuzing. "
-    "Matn rasmiy, aniq va o‘qituvchi uchun qulay bo‘lsin."
-)
-
-SYSTEM_PROMPT_LESSON = (
-    "Siz tajribali metodist-o‘qituvchisiz. "
-    "Dars ishlanma tuzing: ko‘p misollar, yechimlar, interfaol metodlar va o‘qituvchi uchun aniq ko‘rsatmalar bilan."
-)
-
-# === Yadro funksiyasi: umumiy so‘rov yuboruvchi yordamchi ===
+# === Chat fallback yordamchisi ===
 def _call_chat_completions(client: OpenAI, model: str, messages: list, temperature: float, max_tokens: int):
-    max_retries = 3
-    backoff = 1.0
+    attempts, backoff = 0, 1
     cur_model = model
-    for attempt in range(1, max_retries + 1):
+    while attempts < 3:
+        attempts += 1
         try:
-            resp = client.chat.completions.create(
+            return client.chat.completions.create(
                 model=cur_model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            return resp
         except Exception as e:
-            err = str(e or "")
-            logger.exception("OpenAI request failed (attempt %s) model=%s: %s", attempt, cur_model, err)
-
-            # noto'g'ri API kalit (401)
-            if "invalid_api_key" in err or "Incorrect API key" in err or "401" in err:
-                raise
-
-            # model mavjud emas -> fallback
-            if ("model" in err.lower() and ("not found" in err.lower() or "is not available" in err.lower())) and cur_model != "gpt-3.5-turbo":
-                logger.info("Model %s mavjud emas, fallback gpt-3.5-turbo ga urinyapmiz.", cur_model)
+            err = str(e).lower()
+            logger.warning(f"Xatolik ({attempts}-urinish): {err}")
+            if "not found" in err and cur_model != "gpt-3.5-turbo":
                 cur_model = "gpt-3.5-turbo"
                 continue
-
-            # rate limit yoki server xatosi -> retry
-            if "429" in err or "rate limit" in err.lower() or any(code in err for code in ["500", "502", "503"]):
-                if attempt < max_retries:
-                    time.sleep(backoff)
-                    backoff *= 2
-                    continue
-                raise
-
-            # boshqa xatoliklar -> qaytadan tashqariga chiqaramiz
+            if any(code in err for code in ["429","500","502","503"]):
+                time.sleep(backoff)
+                backoff *= 2
+                continue
             raise
+    raise RuntimeError("OpenAI javobi olinmadi.")
 
-    raise RuntimeError("OpenAI so'rovi maksimal urinishda ham muvaffaqiyatsiz tugadi.")
+# === Konspekt ===
+SYSTEM_PROMPT_CONSPECT = (
+    "Siz O‘zbekiston umumta’lim maktablari uchun metodist-o‘qituvchisiz. "
+    "Berilgan fan, sinf va mavzu asosida o‘qituvchi uchun aniq, tushunarli va rasmiy KONSPEKT tuzing."
+)
 
-# === Konspekt yaratish ===
 def _build_conspect_prompt(subject: str, grade: str, topic: str) -> str:
     return f"""
 Fan: {subject}
 Sinf: {grade}
 Mavzu: {topic}
 
-Konspekt tarkibi:
+Konspekt tuzilmasi:
 1. Mavzu nomi
 2. Maqsad va vazifalar
-3. Kutilayotgan o'quv natijalari
+3. Kutilayotgan natijalar
 4. Asosiy tushunchalar
-5. Yangi mavzuning bayoni (batafsil, qadam-baqadam)
-6. Qoida/Teorema (agar mavjud bo'lsa)
-7. Formulalar (tushunarli izoh bilan)
+5. Yangi mavzu bayoni (qadam-baqadam)
+6. Qoida / Teorema (agar mavjud bo‘lsa)
+7. Formulalar (oddiy, o‘qituvchi tushunadigan tarzda)
 8. Misollar va ularning yechimlari
 9. Mustahkamlash savollari
 10. Baholash mezonlari
 11. Uyga vazifa
 
 Eslatma:
-- Formulalarni LaTeX formatda emas, oddiy belgilar bilan yozing (a/b, |a| ≥ 0, √(...)).
-- Agar mavzu matematika yoki fizika bilan bog'liq bo'lsa, kamida 3 misol va 2 mustaqil topshiriq qo'shing.
-- Matn rasmiy va o'qituvchi uchun qulay bo'lsin.
+- Formulalar LaTeXda emas, oddiy belgilar bilan yozilsin.
+- Matn soddaligi va o‘qituvchilik tili saqlansin.
 """
 
 def generate_conspect(subject: str, grade: str, topic: str) -> str:
-    """
-    Konspekt yaratadi va natijadagi LaTeX ifodalarni soddalashtiradi.
-    """
     client = _get_client()
     if not client:
-        return "Konspekt yaratishda xatolik: OPENAI API kaliti o‘rnatilmagan."
-
-    model = DEFAULT_MODEL or "gpt-4o"
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT_CONSPECT},
-        {"role": "user", "content": _build_conspect_prompt(subject, grade, topic)}
-    ]
-
+        return "❌ Konspekt yaratishda xatolik: API kaliti yo‘q."
     try:
-        resp = _call_chat_completions(client, model, messages, TEMPERATURE, MAX_TOKENS)
-        text = resp.choices[0].message.content.strip()
-        cleaned = _clean_latex(text)
-        return cleaned
+        resp = _call_chat_completions(
+            client, DEFAULT_MODEL,
+            [
+                {"role": "system", "content": SYSTEM_PROMPT_CONSPECT},
+                {"role": "user", "content": _build_conspect_prompt(subject, grade, topic)}
+            ],
+            TEMPERATURE, MAX_TOKENS
+        )
+        return _clean_latex(resp.choices[0].message.content.strip())
     except Exception as e:
-        err = str(e)
-        logger.exception("generate_conspect xatolik: %s", err)
-        if "invalid_api_key" in err or "Incorrect API key" in err or "401" in err:
-            return (
-                "Konspekt yaratishda xatolik: OpenAI API kaliti noto'g'ri yoki bekor qilingan. "
-                "Environment variables (OPENAI_API_KEY) ga to'g'ri kalit joylang."
-            )
-        return f"Konspekt yaratishda xatolik yuz berdi: {err[:300]}"
+        return f"Konspekt yaratishda xatolik yuz berdi: {str(e)}"
 
-# === Dars ishlanma (misollar va metodik rang-baranglik bilan) ===
+# === Dars ishlanma ===
+SYSTEM_PROMPT_LESSON = (
+    "Siz tajribali metodist-o‘qituvchisiz. "
+    "O‘zbekiston o‘quvchilari uchun amaliy, interfaol va misollar bilan boyitilgan DARS ISHLANMA yozing."
+)
+
 def _build_lesson_prompt(subject: str, grade: str, topic: str) -> str:
     return f"""
 Fan: {subject}
 Sinf: {grade}
 Mavzu: {topic}
 
-Iltimos, quyidagi tuzilma bo'yicha batafsil DARS ISHLANMA yozing:
-1) Mavzu nomi
-2) Maqsad: (ta'limiy, tarbiyaviy, rivojlantiruvchi)
-3) Jihozlar va ko'rgazmali materiallar
-4) Metodik yondashuvlar (kamida 4 xil interfaol metod bilan)
-5) Darsning borishi: (kirish, yangi mavzu, misollar bilan bayon, amaliy mashqlar, mustahkamlash)
-6) Har bosqich uchun o'qituvchi va o'quvchi faoliyati (ancha batafsil)
-7) Kamida 10 ta misol (turli murakkablikda) va ularning yechimlari
-8) Mustahkamlash uchun 10 ta topshiriq (turli darajada)
-9) Baholash mezonlari (kriteriyalar)
-10) Uyga vazifa: 3-4 turdagi topshiriq har birida 10 ta misol
+DARS ISHLANMA TUZILMASI:
+1. Mavzu nomi
+2. Maqsadlar: ta’limiy, tarbiyaviy, rivojlantiruvchi
+3. Jihozlar va ko‘rgazmali vositalar
+4. Metodik yondashuvlar (kamida 4 ta interfaol metod bilan)
+5. Darsning borishi:
+   - Kirish (motivatsiya, aqliy hujum)
+   - Yangi mavzu bayoni (misollar bilan tushuntirish)
+   - Amaliy mashqlar (o‘quvchi ishtirokida)
+   - Mustahkamlash
+6. Har bosqichda o‘qituvchi va o‘quvchi faoliyati
+7. Kamida 10 misol va ularning yechimlari
+8. Mustahkamlash uchun 10 topshiriq
+9. Baholash mezonlari
+10. Uyga vazifa: ijodiy va amaliy mashqlar
 
 Eslatma:
-- FORMULALARNI oddiy, tushunarli shaklda yozing.
-- Har bir misolning yechimini bosqichma-bosqich yozing.
-- Har bosqichda kamida 2 interfaol usul (juftlik, rolli o'yin, klaster va h.k.) taklif qiling.
-- Matn rasmiy, o'qituvchi uchun tayyor bo'lsin.
+- Har bir formulani izohli yozing: masalan, “S — yuzasi, a va b — tomonlar”.
+- Har bosqichda 2 ta interfaol usul bo‘lsin.
+- Matn o‘qituvchi uchun tayyor hujjatga o‘xshasin.
 """
 
 def generate_lesson_plan(subject: str, grade: str, topic: str) -> str:
     client = _get_client()
     if not client:
-        return "Dars ishlanma yaratishda xatolik: OPENAI API kaliti o‘rnatilmagan."
-
-    model = DEFAULT_MODEL or "gpt-4o"
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT_LESSON},
-        {"role": "user", "content": _build_lesson_prompt(subject, grade, topic)}
-    ]
-
+        return "❌ Dars ishlanma yaratishda xatolik: API kaliti yo‘q."
     try:
-        resp = _call_chat_completions(client, model, messages, TEMPERATURE, MAX_TOKENS)
-        text = resp.choices[0].message.content.strip()
-        cleaned = _clean_latex(text)
-        return cleaned
+        resp = _call_chat_completions(
+            client, DEFAULT_MODEL,
+            [
+                {"role": "system", "content": SYSTEM_PROMPT_LESSON},
+                {"role": "user", "content": _build_lesson_prompt(subject, grade, topic)}
+            ],
+            TEMPERATURE, MAX_TOKENS
+        )
+        return _clean_latex(resp.choices[0].message.content.strip())
     except Exception as e:
-        err = str(e)
-        logger.exception("generate_lesson_plan xatolik: %s", err)
-        if "invalid_api_key" in err or "Incorrect API key" in err or "401" in err:
-            return (
-                "Dars ishlanma yaratishda xatolik: OpenAI API kaliti noto'g'ri yoki bekor qilingan. "
-                "Iltimos, yangi kalit yarating va `OPENAI_API_KEY` ga joylang."
-            )
-        return f"Dars ishlanma yaratishda xatolik yuz berdi: {err[:300]}"
+        return f"Dars ishlanma yaratishda xatolik: {str(e)}"
 
+# === Metodik maslahat ===
 def generate_methodical_advice(subject: str, grade: str, topic: str) -> str:
-    """
-    Fan, sinf va mavzu asosida o‘qituvchi uchun metodik tavsiyalar beradi.
-    """
     client = _get_client()
-    if client is None:
+    if not client:
         return "❌ Metodik maslahat olishda xatolik: API kaliti topilmadi."
 
-    prompt = f"""
+    messages = [
+        {"role": "system", "content": "Siz tajribali pedagog-metodistsiz."},
+        {"role": "user", "content": f"""
 Fan: {subject}
 Sinf: {grade}
 Mavzu: {topic}
 
-🎓 Siz tajribali metodist-o‘qituvchisiz.
-Berilgan mavzu uchun o‘qituvchiga quyidagi ma’lumotlarni yozing:
-1. Tavsiya etiladigan dars metodlari (kamida 5 ta): interfaol, ijodiy, amaliy.
-2. Har bir metod qanday bosqichda samarali ishlatiladi.
-3. Shu mavzuga mos 2 ta o‘yinli yoki interfaol mashq tavsiya qiling.
-4. Amaliy topshiriq yoki loyiha g‘oyasi.
-5. Darsda o‘quvchi faolligini oshirish bo‘yicha maslahatlar.
-6. Metodik xatolarga yo‘l qo‘ymaslik bo‘yicha ogohlantirishlar.
-Matnni soddaligi va amaliyligi bilan yozing.
-"""
+🎓 Metodik maslahat uchun:
+1. 5 ta samarali metodni yozing (interfaol, ijodiy, amaliy).
+2. Har bir metodning dars bosqichidagi qo‘llanishi.
+3. 2 ta o‘yinli yoki interfaol mashq misoli.
+4. Amaliy loyiha yoki topshiriq g‘oyasi.
+5. O‘quvchi faolligini oshirish usullari.
+6. O‘qituvchi yo‘l qo‘ymaydigan metodik xatoliklar.
+Matn soddaligi, amaliyligi va foydaliligiga e’tibor bering.
+"""}
+    ]
 
     try:
-        resp = client.chat.completions.create(
-            model=DEFAULT_MODEL,
-            messages=[
-                {"role": "system", "content": "Siz tajribali pedagog-metodistsiz."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.6,
-            max_tokens=MAX_TOKENS
-        )
-        return "📘 " + resp.choices[0].message.content.strip()
+        resp = _call_chat_completions(client, DEFAULT_MODEL, messages, 0.6, MAX_TOKENS)
+        text = resp.choices[0].message.content.strip()
+        return "📙 METODIK MASLAHAT 📙\n\n" + _clean_latex(text)
     except Exception as e:
-        return f"❌ Metodik maslahat olishda xatolik yuz berdi: {str(e)}"
+        return f"❌ Metodik maslahat olishda xatolik: {str(e)}"
