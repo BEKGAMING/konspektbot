@@ -12,9 +12,10 @@ from utils.openai_api import (
 )
 from utils.docx_generator import create_named_docx, get_preview
 from config import ADMIN_ID
-import os, re
+import os, re, html, logging
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 # === Asosiy menyu ===
 def main_menu():
@@ -171,10 +172,14 @@ async def custom_or_grade_handler(msg: types.Message):
             filename = create_named_docx(text, subject, topic, user_id)
             save_history(user_id, subject, grade, topic, filename)
             await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspekt tayyor!", reply_markup=main_menu())
-            os.remove(filename)
+            try:
+                os.remove(filename)
+            except Exception:
+                pass
         else:
             preview = get_preview(text, 20)
             await msg.answer(f"📝 Konspekt preview (20%):\n\n{preview}\n\nTo‘liq versiya uchun premium bo‘ling.\nKarta: 9860 6067 4424 9933", reply_markup=main_menu())
+            save_last_request(user_id, subject, grade, topic)
         set_state(user_id, None)
 
     # 4️⃣ Dars ishlanma
@@ -191,10 +196,14 @@ async def custom_or_grade_handler(msg: types.Message):
             filename = create_named_docx(text, subject, topic + "_DarsIshlanma", user_id)
             save_history(user_id, subject, grade, topic, filename)
             await msg.answer_document(types.FSInputFile(filename), caption="✅ Dars ishlanma tayyor!", reply_markup=main_menu())
-            os.remove(filename)
+            try:
+                os.remove(filename)
+            except Exception:
+                pass
         else:
             preview = get_preview(text, 20)
             await msg.answer(f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\nPremium uchun karta: 9860 6067 4424 9933", reply_markup=main_menu())
+            save_last_request(user_id, subject, grade, topic)
         set_state(user_id, None)
 
     # 5️⃣ Metodik maslahat
@@ -214,12 +223,21 @@ async def custom_or_grade_handler(msg: types.Message):
 # === To‘lov chekini qabul qilish ===
 @router.message(F.photo)
 async def handle_payment_photo(msg: types.Message):
+    # agar foydalanuvchi bloklangan bo'lsa, cheklarini qabul qilmaslik mumkin
+    if is_blocked(msg.from_user.id):
+        return await msg.answer("⛔ Siz bloklangansiz. To‘lov chekini yuborib bo‘lmaydi.")
+
     user_id = msg.from_user.id
-    username = msg.from_user.username or "Noma’lum"
+    username = msg.from_user.username  # None bo'lishi mumkin
+    user_first = (msg.from_user.first_name or "").strip()
     photo_id = msg.photo[-1].file_id
 
-    # To‘lovni bazaga yozamiz
-    payment_id = add_payment(user_id, username, photo_id)
+    # DB ga yozish
+    try:
+        payment_id = add_payment(user_id, username or "", photo_id)
+    except Exception as e:
+        logger.exception("add_payment xatolik: %s", e)
+        return await msg.answer("❌ To‘lovni saqlashda xatolik yuz berdi. Iltimos, keyinroq urinib ko‘ring.")
 
     # Foydalanuvchiga xabar
     await msg.answer(
@@ -228,7 +246,10 @@ async def handle_payment_photo(msg: types.Message):
         "Iltimos, biroz kuting ⏳"
     )
 
-    # --- Tugmalar ---
+    # Admin tugmalari va kontakt URL (har doim ishlaydigan)
+    display_user = f"@{html.escape(username)}" if username else html.escape(user_first or "Noma’lum")
+    contact_url = f"https://t.me/{username}" if username else f"tg://user?id={user_id}"
+
     buttons = types.InlineKeyboardMarkup(inline_keyboard=[
         [
             types.InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{payment_id}"),
@@ -236,23 +257,35 @@ async def handle_payment_photo(msg: types.Message):
         ],
         [
             types.InlineKeyboardButton(text="⛔ Bloklash", callback_data=f"block_{user_id}"),
-            types.InlineKeyboardButton(text="📩 Bog‘lanish", url=f"https://t.me/{username}" if username != "Noma’lum" else f"tg://user?id={user_id}")
+            types.InlineKeyboardButton(text="📩 Bog‘lanish", url=contact_url)
         ]
     ])
 
-    # Admin uchun xabar
+    caption = (
+        f"💳 <b>Yangi to‘lov!</b>\n\n"
+        f"👤 Foydalanuvchi: {display_user}\n"
+        f"🆔 ID: <code>{user_id}</code>\n"
+        f"📎 Payment ID: <code>{payment_id}</code>"
+    )
+
+    # Adminga rasm va tugmalar yuborish
     try:
         await msg.bot.send_photo(
-            ADMIN_ID,
+            chat_id=ADMIN_ID,
             photo=photo_id,
-            caption=(
-                f"💳 <b>Yangi to‘lov!</b>\n\n"
-                f"👤 Foydalanuvchi: @{username}\n"
-                f"🆔 ID: <code>{user_id}</code>\n"
-                f"📎 Payment ID: <code>{payment_id}</code>"
-            ),
+            caption=caption,
             parse_mode="HTML",
             reply_markup=buttons
         )
     except Exception as e:
-        print(f"Admin xabar yuborishda xato: {e}")
+        logger.exception("Adminga to'lov xabar yuborishda xato: %s", e)
+        # fallback: oddiy matnli xabar yuborish
+        try:
+            await msg.bot.send_message(
+                ADMIN_ID,
+                caption,
+                parse_mode="HTML",
+                reply_markup=buttons
+            )
+        except Exception as e2:
+            logger.exception("Adminga fallback yuborishda ham xato: %s", e2)
