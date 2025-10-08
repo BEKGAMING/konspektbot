@@ -115,12 +115,12 @@ def block_user(user_id: int):
     conn.close()
 
 def unblock_user(user_id: int):
-    """Foydalanuvchini blokdan chiqarish."""
     conn = connect()
     cur = conn.cursor()
     cur.execute("UPDATE users SET blocked=0 WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
+
 
 def is_blocked(user_id: int) -> bool:
     conn = connect()

@@ -218,14 +218,29 @@ async def handle_payment_photo(msg: types.Message):
     username = msg.from_user.username or "Noma’lum"
     photo_id = msg.photo[-1].file_id
 
+    # To‘lovni bazaga yozamiz
     payment_id = add_payment(user_id, username, photo_id)
 
+    # Foydalanuvchiga xabar
     await msg.answer(
         "✅ To‘lov cheki qabul qilindi!\n"
         "Admin tomonidan tekshirilgach, sizga Premium faollashtiriladi.\n"
         "Iltimos, biroz kuting ⏳"
     )
 
+    # --- Tugmalar ---
+    buttons = types.InlineKeyboardMarkup(inline_keyboard=[
+        [
+            types.InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{payment_id}"),
+            types.InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{payment_id}")
+        ],
+        [
+            types.InlineKeyboardButton(text="⛔ Bloklash", callback_data=f"block_{user_id}"),
+            types.InlineKeyboardButton(text="📩 Bog‘lanish", url=f"https://t.me/{username}" if username != "Noma’lum" else f"tg://user?id={user_id}")
+        ]
+    ])
+
+    # Admin uchun xabar
     try:
         await msg.bot.send_photo(
             ADMIN_ID,
@@ -236,7 +251,8 @@ async def handle_payment_photo(msg: types.Message):
                 f"🆔 ID: <code>{user_id}</code>\n"
                 f"📎 Payment ID: <code>{payment_id}</code>"
             ),
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=buttons
         )
     except Exception as e:
         print(f"Admin xabar yuborishda xato: {e}")
