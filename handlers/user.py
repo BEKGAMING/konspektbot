@@ -88,8 +88,6 @@ async def new_lesson_plan_start(msg: types.Message):
     set_state(msg.from_user.id, "lesson_subject")
 
 # === Metodik maslahat ===
-from utils.openai_api import generate_methodical_advice
-
 @router.message(F.text == "📙 Metodik maslahat")
 async def methodical_start(msg: types.Message):
     user_id = msg.from_user.id
@@ -97,42 +95,6 @@ async def methodical_start(msg: types.Message):
         return await msg.answer("⛔ Siz bloklangansiz.")
     await msg.answer("Fan nomini kiriting (masalan: Matematika):")
     set_state(user_id, "method_subject")
-
-@router.message(F.text, F.text.len() > 0)
-async def methodical_handler(msg: types.Message):
-    user_id = msg.from_user.id
-    state = get_state(user_id)
-
-    # 1. Fan nomi
-    if state == "method_subject":
-        set_subject(user_id, msg.text)
-        set_state(user_id, "method_grade")
-        return await msg.answer("Sinfni kiriting (masalan: 7):")
-
-    # 2. Sinf
-    if state == "method_grade":
-        if not msg.text.isdigit() or not (1 <= int(msg.text) <= 11):
-            return await msg.answer("Iltimos, sinfni 1 dan 11 gacha raqam bilan yozing.")
-        set_grade(user_id, msg.text)
-        set_state(user_id, "method_topic")
-        return await msg.answer("Mavzuni kiriting (masalan: Kasrlarni taqqoslash):")
-
-    # 3. Mavzu
-    if state == "method_topic":
-        subject = get_subject(user_id)
-        grade = get_grade(user_id)
-        topic = msg.text
-
-        await msg.answer("⏳ Metodik maslahat tayyorlanmoqda, biroz kuting...")
-
-        try:
-            advice = generate_methodical_advice(subject, grade, topic)
-            set_state(user_id, None)
-            await msg.answer(advice, reply_markup=main_menu())
-        except Exception as e:
-            set_state(user_id, None)
-            await msg.answer(f"❌ Xatolik: {str(e)}", reply_markup=main_menu())
-
 
 # === Fan tanlash ===
 @router.message(F.text.in_(["Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika",
@@ -158,7 +120,7 @@ async def custom_or_grade_handler(msg: types.Message):
     user_id = msg.from_user.id
     state = get_state(user_id)
 
-    # 1️⃣ Custom fan
+    # Custom fan
     if state in ["subject", "lesson_subject", "method_subject"] and msg.text not in [
         "Matematika", "Tarix", "Ona tili", "Biologiya", "Kimyo", "Fizika",
         "Geografiya", "Ingliz tili", "Tasviriy san’at", "Informatika", "Boshqa fan"
@@ -172,7 +134,7 @@ async def custom_or_grade_handler(msg: types.Message):
         set_state(user_id, next_state)
         return await msg.answer("Sinfni tanlang:", reply_markup=grade_menu())
 
-    # 2️⃣ Sinf
+    # Sinf tanlash
     if state in ["grade", "lesson_grade", "method_grade"] and msg.text.isdigit() and 1 <= int(msg.text) <= 11:
         next_state = {
             "grade": "topic",
@@ -185,36 +147,38 @@ async def custom_or_grade_handler(msg: types.Message):
             keyboard=[[KeyboardButton(text="🔙 Bekor qilish")]], resize_keyboard=True
         ))
 
-    # 3️⃣ Konspekt
+    # Konspekt
     if state == "topic":
         if msg.text == "🔙 Bekor qilish":
             set_state(user_id, None)
             return await msg.answer("Bekor qilindi.", reply_markup=main_menu())
+
         subject, grade, topic = get_subject(user_id), get_grade(user_id), msg.text
-        topic_file = _sanitize_filename(topic[:60])
+        await msg.answer("⏳ Konspekt tayyorlanmoqda, biroz kuting...")  # 🔥 Yangi qo‘shildi
 
         text = generate_conspect(subject, grade, topic)
         if is_premium(user_id):
-            filename = create_named_docx(text, subject, topic_file, user_id)
+            filename = create_named_docx(text, subject, topic, user_id)
             save_history(user_id, subject, grade, topic, filename)
             await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspekt tayyor!", reply_markup=main_menu())
             os.remove(filename)
         else:
             preview = get_preview(text, 20)
-            await msg.answer(f"📝 Konspekt preview (20%):\n\n{preview}\n\nTo‘liq versiya uchun premium bo‘ling.\nKarta: 9860 6067 4424 9933", reply_markup=main_menu())
+            await msg.answer(f"📝 Konspekt preview (20%):\n\n{preview}\n\nPremium uchun karta: 9860 6067 4424 9933", reply_markup=main_menu())
         set_state(user_id, None)
 
-    # 4️⃣ Dars ishlanma
+    # Dars ishlanma
     if state == "lesson_topic":
         if msg.text == "🔙 Bekor qilish":
             set_state(user_id, None)
             return await msg.answer("Bekor qilindi.", reply_markup=main_menu())
+
         subject, grade, topic = get_subject(user_id), get_grade(user_id), msg.text
-        topic_file = _sanitize_filename(topic[:60])
+        await msg.answer("💫 Dars ishlanma tayyorlanmoqda, biroz kuting...")  # 🔥 Yangi qo‘shildi
 
         text = generate_lesson_plan(subject, grade, topic)
         if is_premium(user_id):
-            filename = create_named_docx(text, subject, topic_file + "_DarsIshlanma", user_id)
+            filename = create_named_docx(text, subject, topic + "_DarsIshlanma", user_id)
             save_history(user_id, subject, grade, topic, filename)
             await msg.answer_document(types.FSInputFile(filename), caption="✅ Dars ishlanma tayyor!", reply_markup=main_menu())
             os.remove(filename)
@@ -223,13 +187,15 @@ async def custom_or_grade_handler(msg: types.Message):
             await msg.answer(f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\nPremium uchun karta: 9860 6067 4424 9933", reply_markup=main_menu())
         set_state(user_id, None)
 
-    # 5️⃣ Metodik maslahat
+    # Metodik maslahat
     if state == "method_topic":
         if msg.text == "🔙 Bekor qilish":
             set_state(user_id, None)
             return await msg.answer("Bekor qilindi.", reply_markup=main_menu())
+
         subject, grade, topic = get_subject(user_id), get_grade(user_id), msg.text
-        await msg.answer("⏳ Metodik maslahat tayyorlanmoqda, biroz kuting...")
+        await msg.answer("🧠 Metodik maslahat tayyorlanmoqda, biroz kuting...")  # 🔥 Yangi qo‘shildi
+
         advice = generate_methodical_advice(subject, grade, topic)
         set_state(user_id, None)
         await msg.answer(advice, reply_markup=main_menu())
