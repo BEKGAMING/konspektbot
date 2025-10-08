@@ -4,12 +4,10 @@ from datetime import datetime
 
 DB_PATH = "database.db"
 
-
 def connect():
     return sqlite3.connect(DB_PATH)
 
-
-# --- Jadval yaratish ---
+# === Jadval yaratish ===
 def init_db():
     conn = connect()
     cur = conn.cursor()
@@ -62,7 +60,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 # === Oxirgi so‘rovlar ===
 def save_last_request(user_id: int, subject: str, grade: str, topic: str):
     conn = connect()
@@ -79,7 +76,6 @@ def save_last_request(user_id: int, subject: str, grade: str, topic: str):
     conn.commit()
     conn.close()
 
-
 def get_last_request(user_id: int):
     conn = connect()
     cur = conn.cursor()
@@ -87,7 +83,6 @@ def get_last_request(user_id: int):
     row = cur.fetchone()
     conn.close()
     return row
-
 
 # === Foydalanuvchilar ===
 def add_user(user_id: int, username: str):
@@ -97,7 +92,6 @@ def add_user(user_id: int, username: str):
     conn.commit()
     conn.close()
 
-
 def is_premium(user_id: int) -> bool:
     conn = connect()
     cur = conn.cursor()
@@ -106,14 +100,12 @@ def is_premium(user_id: int) -> bool:
     conn.close()
     return row and row[0] == 1
 
-
 def set_premium(user_id: int, status: int = 1):
     conn = connect()
     cur = conn.cursor()
     cur.execute("UPDATE users SET premium=? WHERE user_id=?", (status, user_id))
     conn.commit()
     conn.close()
-
 
 def block_user(user_id: int):
     conn = connect()
@@ -122,6 +114,13 @@ def block_user(user_id: int):
     conn.commit()
     conn.close()
 
+def unblock_user(user_id: int):
+    """Foydalanuvchini blokdan chiqarish."""
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET blocked=0 WHERE user_id=?", (user_id,))
+    conn.commit()
+    conn.close()
 
 def is_blocked(user_id: int) -> bool:
     conn = connect()
@@ -131,7 +130,6 @@ def is_blocked(user_id: int) -> bool:
     conn.close()
     return row and row[0] == 1
 
-
 def get_users_count():
     conn = connect()
     cur = conn.cursor()
@@ -139,7 +137,6 @@ def get_users_count():
     row = cur.fetchone()
     conn.close()
     return row[0] if row else 0
-
 
 # === State boshqaruvi ===
 def set_state(user_id: int, state: str):
@@ -149,7 +146,6 @@ def set_state(user_id: int, state: str):
     conn.commit()
     conn.close()
 
-
 def get_state(user_id: int):
     conn = connect()
     cur = conn.cursor()
@@ -157,7 +153,6 @@ def get_state(user_id: int):
     row = cur.fetchone()
     conn.close()
     return row[0] if row else None
-
 
 # === Fan / sinf ===
 def set_subject(user_id: int, subject: str):
@@ -167,7 +162,6 @@ def set_subject(user_id: int, subject: str):
     conn.commit()
     conn.close()
 
-
 def get_subject(user_id: int):
     conn = connect()
     cur = conn.cursor()
@@ -176,14 +170,12 @@ def get_subject(user_id: int):
     conn.close()
     return row[0] if row else None
 
-
 def set_grade(user_id: int, grade: str):
     conn = connect()
     cur = conn.cursor()
     cur.execute("UPDATE users SET grade=? WHERE user_id=?", (grade, user_id))
     conn.commit()
     conn.close()
-
 
 def get_grade(user_id: int):
     conn = connect()
@@ -192,7 +184,6 @@ def get_grade(user_id: int):
     row = cur.fetchone()
     conn.close()
     return row[0] if row else None
-
 
 # === Tarix ===
 def save_history(user_id: int, subject: str, grade: str, topic: str, file_path: str):
@@ -205,7 +196,6 @@ def save_history(user_id: int, subject: str, grade: str, topic: str, file_path: 
     conn.commit()
     conn.close()
 
-
 def get_history(user_id: int):
     conn = connect()
     cur = conn.cursor()
@@ -213,7 +203,6 @@ def get_history(user_id: int):
     rows = cur.fetchall()
     conn.close()
     return rows
-
 
 # === To‘lovlar ===
 def add_payment(user_id: int, username: str, photo_id: str):
@@ -228,7 +217,6 @@ def add_payment(user_id: int, username: str, photo_id: str):
     conn.close()
     return payment_id
 
-
 def get_pending_payments():
     conn = connect()
     cur = conn.cursor()
@@ -236,7 +224,6 @@ def get_pending_payments():
     rows = cur.fetchall()
     conn.close()
     return rows
-
 
 def get_payment_by_id(payment_id: int):
     conn = connect()
@@ -246,14 +233,12 @@ def get_payment_by_id(payment_id: int):
     conn.close()
     return row
 
-
 def approve_payment(payment_id: int):
     conn = connect()
     cur = conn.cursor()
     cur.execute("UPDATE payments SET approved=1 WHERE id=?", (payment_id,))
     conn.commit()
     conn.close()
-
 
 def reject_payment(payment_id: int):
     conn = connect()
