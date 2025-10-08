@@ -10,9 +10,9 @@ logger.setLevel(logging.INFO)
 
 # === Muhit o‘zgaruvchilari ===
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-4o")
-TEMPERATURE = float(os.getenv("TEMPERATURE", "0.5"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4000"))
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.4"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "1500"))
 
 # === OpenAI klienti ===
 def _get_client() -> Optional[OpenAI]:
