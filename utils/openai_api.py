@@ -209,3 +209,41 @@ Matn soddaligi, amaliyligi va foydaliligiga e’tibor bering.
         return "📙 METODIK MASLAHAT 📙\n\n" + _clean_latex(text)
     except Exception as e:
         return f"❌ Metodik maslahat olishda xatolik: {str(e)}"
+
+def analyze_teaching_problem(problem_text: str) -> str:
+    """
+    O‘qituvchining muammosini tahlil qilib, yechimlar va tavsiyalar beradi.
+    """
+    client = _get_client()
+    if client is None:
+        return "❌ Tahlilni amalga oshirib bo‘lmadi: API kaliti topilmadi."
+
+    prompt = f"""
+Siz tajribali metodist-o‘qituvchisiz.
+Quyidagi o‘qituvchi muammosini tahlil qiling va yechimlar taklif qiling:
+
+🧩 Muammo:
+{problem_text}
+
+Javobda quyidagilar bo‘lsin:
+1. Muammoning mumkin bo‘lgan sabablari
+2. Amaliy yechimlar
+3. Tavsiya etiladigan metod yoki yondashuvlar
+4. O‘quvchi faolligini oshirish usullari
+5. Xulosa va motivatsion tavsiya
+Matn soddaligi, foydaliligi va real qo‘llashga yaroqliligi bilan yozilsin.
+"""
+
+    try:
+        resp = client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": "Siz metodik tahlilchi va ustozlarga yordam beruvchi sun’iy intellektsiz."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=MAX_TOKENS
+        )
+        return "🪄 " + resp.choices[0].message.content.strip()
+    except Exception as e:
+        return f"❌ Tahlil qilishda xatolik yuz berdi: {str(e)}"

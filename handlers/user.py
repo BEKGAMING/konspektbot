@@ -13,6 +13,7 @@ from utils.openai_api import (
 from utils.docx_generator import create_named_docx, get_preview
 from config import ADMIN_ID
 import os, re, html, logging
+from utils.openai_api import analyze_teaching_problem
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -22,7 +23,8 @@ def main_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📄 Yangi Konspekt"), KeyboardButton(text="📘 Dars ishlanma yaratish")],
-            [KeyboardButton(text="📙 Metodik maslahat"), KeyboardButton(text="📂 Mening konspektlarim")]
+            [KeyboardButton(text="📙 Metodik maslahat"), KeyboardButton(text="📂 Mening konspektlarim")],
+            [KeyboardButton(text="🪄 Muammoni tahlil qilish")]
         ],
         resize_keyboard=True
     )
@@ -289,3 +291,34 @@ async def handle_payment_photo(msg: types.Message):
             )
         except Exception as e2:
             logger.exception("Adminga fallback yuborishda ham xato: %s", e2)
+
+# === Muammoni tahlil qilish ===
+@router.message(F.text == "🪄 Muammoni tahlil qilish")
+async def problem_analysis_start(msg: types.Message):
+    user_id = msg.from_user.id
+    if is_blocked(user_id):
+        return await msg.answer("⛔ Siz bloklangansiz.")
+    await msg.answer(
+        "🧩 Darsda duch kelgan muammoingizni yozing.\n\n"
+        "Masalan:\n"
+        "— O‘quvchilar mavzuni tushunmayapti.\n"
+        "— Darsda vaqt yetmayapti.\n"
+        "— Guruh ishlari sust kechadi va hokazo."
+    )
+    set_state(user_id, "problem_text")
+
+@router.message(F.text)
+async def problem_analysis_handler(msg: types.Message):
+    user_id = msg.from_user.id
+    if get_state(user_id) != "problem_text":
+        return  # boshqa holatlar uchun handlerlar ishlaydi
+
+    await msg.answer("⏳ Muammo tahlil qilinmoqda, biroz kuting...")
+
+    try:
+        result = analyze_teaching_problem(msg.text)
+        set_state(user_id, None)
+        await msg.answer(result, reply_markup=main_menu())
+    except Exception as e:
+        set_state(user_id, None)
+        await msg.answer(f"❌ Xatolik: {str(e)}", reply_markup=main_menu())
