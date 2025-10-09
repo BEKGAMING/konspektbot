@@ -16,8 +16,9 @@ def is_admin(msg: types.Message) -> bool:
     return msg.from_user.id == ADMIN_ID
 
 
-@router.message(F.text == "/admin")
+@router.message(F.text.lower().in_({"/admin", "admin"}))
 async def admin_panel(msg: types.Message):
+    print("Admin komandasi ishladi:", msg.from_user.id)
     if msg.from_user.id != ADMIN_ID:
         return await msg.answer("⛔ Siz admin emassiz.")
     
