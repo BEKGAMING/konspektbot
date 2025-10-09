@@ -172,64 +172,61 @@ async def text_flow_handler(msg: types.Message):
         set_state(uid, next_state)
         return await msg.answer("Endi mavzuni kiriting:")
 
-    # === 📄 Konspekt ===
+        # === Konspekt ===
     if state == "topic":
-    # avval limitni tekshiramiz
-    free_uses = get_free_uses(uid)
-    is_free = free_uses < 3
-    if not await check_limit(uid, msg): return
+        free_uses = get_free_uses(uid)
+        is_free = free_uses < 3
+        if not await check_limit(uid, msg): return
 
-    subject, grade, topic = get_subject(uid), get_grade(uid), text
-    await msg.answer("⏳ Konspekt tayyorlanmoqda...")
-    content = generate_conspect(subject, grade, topic)
+        subject, grade, topic = get_subject(uid), get_grade(uid), text
+        await msg.answer("⏳ Konspekt tayyorlanmoqda...")
+        content = generate_conspect(subject, grade, topic)
 
-    if is_premium(uid) or is_free or uid == ADMIN_ID:
-        filename = create_named_docx(content, subject, topic, uid)
-        save_history(uid, subject, grade, topic, filename)
-        await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspekt tayyor!", reply_markup=main_menu())
-        try:
-            os.remove(filename)
-        except:
-            pass
-    else:
-        preview = get_preview(content, 20)
-        await msg.answer(
-            f"📝 Konspekt preview (20%):\n\n{preview}\n\n"
-            "To‘liq versiya uchun 15 000 UZS to‘lov qiling.\nKarta: <code>9860 6067 4424 9933</code>\nR.K\nTo'lov rasmini shu botga yuboring!",
-            reply_markup=main_menu()
-        )
-    set_state(uid, None)
+        if is_premium(uid) or is_free or uid == ADMIN_ID:
+            filename = create_named_docx(content, subject, topic, uid)
+            save_history(uid, subject, grade, topic, filename)
+            await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspekt tayyor!", reply_markup=main_menu())
+            try:
+                os.remove(filename)
+            except:
+                pass
+        else:
+            preview = get_preview(content, 20)
+            await msg.answer(
+                f"📝 Konspekt preview (20%):\n\n{preview}\n\n"
+                "To‘liq versiya uchun 15 000 UZS to‘lov qiling.",
+                reply_markup=main_menu()
+            )
+        set_state(uid, None)
 
-
-# === 📘 Dars ishlanma ===
+    # === Dars ishlanma ===
     elif state == "lesson_topic":
-    free_uses = get_free_uses(uid)
-    is_free = free_uses < 3
-    if not await check_limit(uid, msg): return
+        free_uses = get_free_uses(uid)
+        is_free = free_uses < 3
+        if not await check_limit(uid, msg): return
 
-    subject, grade, topic = get_subject(uid), get_grade(uid), text
-    await msg.answer("⏳ Dars ishlanma tayyorlanmoqda...")
-    plan = generate_lesson_plan(subject, grade, topic)
+        subject, grade, topic = get_subject(uid), get_grade(uid), text
+        await msg.answer("⏳ Dars ishlanma tayyorlanmoqda...")
+        plan = generate_lesson_plan(subject, grade, topic)
 
-    if is_premium(uid) or is_free or uid == ADMIN_ID:
-        filename = create_named_docx(plan, subject, topic + "_DarsIshlanma", uid)
-        save_history(uid, subject, grade, topic, filename)
-        await msg.answer_document(types.FSInputFile(filename), caption="✅ Dars ishlanma tayyor!", reply_markup=main_menu())
-        try:
-            os.remove(filename)
-        except:
-            pass
-    else:
-        preview = get_preview(plan, 20)
-        await msg.answer(
-            f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\n"
-            "Premium uchun to‘lov: 15 000 UZS.\nKarta: <code>9860 6067 4424 9933</code>\nR.K\nTo'lov rasmini shu botga yuboring!",
-            reply_markup=main_menu()
-        )
-    set_state(uid, None)
+        if is_premium(uid) or is_free or uid == ADMIN_ID:
+            filename = create_named_docx(plan, subject, topic + "_DarsIshlanma", uid)
+            save_history(uid, subject, grade, topic, filename)
+            await msg.answer_document(types.FSInputFile(filename), caption="✅ Dars ishlanma tayyor!", reply_markup=main_menu())
+            try:
+                os.remove(filename)
+            except:
+                pass
+        else:
+            preview = get_preview(plan, 20)
+            await msg.answer(
+                f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\n"
+                "Premium uchun to‘lov: 15 000 UZS.",
+                reply_markup=main_menu()
+            )
+        set_state(uid, None)
 
-
-    # === 📙 Metodik maslahat ===
+    # === Metodik maslahat ===
     elif state == "method_topic":
         if not await check_limit(uid, msg): return
         subject, grade, topic = get_subject(uid), get_grade(uid), text
@@ -237,6 +234,7 @@ async def text_flow_handler(msg: types.Message):
         result = generate_methodical_advice(subject, grade, topic)
         set_state(uid, None)
         return await msg.answer(result, reply_markup=main_menu())
+
 
 
 # === 💳 To‘lov cheki yuborish ===
