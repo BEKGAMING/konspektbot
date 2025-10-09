@@ -173,7 +173,7 @@ async def text_flow_handler(msg: types.Message):
         return await msg.answer("Endi mavzuni kiriting:")
 
     # === 📄 Konspekt ===
-if state == "topic":
+    if state == "topic":
     # avval limitni tekshiramiz
     free_uses = get_free_uses(uid)
     is_free = free_uses < 3
@@ -195,14 +195,14 @@ if state == "topic":
         preview = get_preview(content, 20)
         await msg.answer(
             f"📝 Konspekt preview (20%):\n\n{preview}\n\n"
-            "To‘liq versiya uchun 15 000 UZS to‘lov qiling.",
+            "To‘liq versiya uchun 15 000 UZS to‘lov qiling.\nKarta: <code>9860 6067 4424 9933</code>\nR.K\nTo'lov rasmini shu botga yuboring!",
             reply_markup=main_menu()
         )
     set_state(uid, None)
 
 
 # === 📘 Dars ishlanma ===
-elif state == "lesson_topic":
+    elif state == "lesson_topic":
     free_uses = get_free_uses(uid)
     is_free = free_uses < 3
     if not await check_limit(uid, msg): return
@@ -223,7 +223,7 @@ elif state == "lesson_topic":
         preview = get_preview(plan, 20)
         await msg.answer(
             f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\n"
-            "Premium uchun to‘lov: 15 000 UZS.",
+            "Premium uchun to‘lov: 15 000 UZS.\nKarta: <code>9860 6067 4424 9933</code>\nR.K\nTo'lov rasmini shu botga yuboring!",
             reply_markup=main_menu()
         )
     set_state(uid, None)
