@@ -16,6 +16,21 @@ def is_admin(msg: types.Message) -> bool:
     return msg.from_user.id == ADMIN_ID
 
 
+@router.message(F.text == "/admin")
+async def admin_panel(msg: types.Message):
+    if msg.from_user.id != ADMIN_ID:
+        return await msg.answer("⛔ Siz admin emassiz.")
+    
+    adminbuttons = types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="📊 Statistika"), types.KeyboardButton(text="💳 To‘lovlar")],
+            [types.KeyboardButton(text="👥 Foydalanuvchilar"), types.KeyboardButton(text="🚫 Bloklanganlar")],
+            [types.KeyboardButton(text="🔓 Blokdan chiqarish"), types.KeyboardButton(text="⬅️ Asosiy menyu")]
+        ],
+        resize_keyboard=True
+    )
+    await msg.answer("👑 Admin paneliga xush kelibsiz!", reply_markup=adminbuttons)
+
 # === 🧾 Barcha to‘lovlarni ko‘rish ===
 @router.message(Command("payments"))
 async def payments_handler(msg: types.Message):
