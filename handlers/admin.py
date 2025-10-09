@@ -5,7 +5,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import html, logging
 from utils.db import (
     set_premium, block_user, unblock_user, get_users_count,
-    get_pending_payments, approve_payment, get_payment_by_id, reject_payment
+    get_pending_payments, approve_payment, get_payment_by_id, reject_payment,
+    get_free_uses
 )
 from config import ADMIN_ID
 
@@ -15,13 +16,12 @@ logger = logging.getLogger(__name__)
 def is_admin(msg: types.Message) -> bool:
     return msg.from_user.id == ADMIN_ID
 
-
-@router.message(F.text.lower().in_({"/admin", "admin"}))
+# === Admin panel ===
+@router.message(Command("admin"))
 async def admin_panel(msg: types.Message):
-    print("Admin komandasi ishladi:", msg.from_user.id)
-    if msg.from_user.id != ADMIN_ID:
+    if not is_admin(msg):
         return await msg.answer("⛔ Siz admin emassiz.")
-    
+
     adminbuttons = types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="📊 Statistika"), types.KeyboardButton(text="💳 To‘lovlar")],
@@ -32,12 +32,13 @@ async def admin_panel(msg: types.Message):
     )
     await msg.answer("👑 Admin paneliga xush kelibsiz!", reply_markup=adminbuttons)
 
-# === 🧾 Barcha to‘lovlarni ko‘rish ===
-@router.message(Command("payments"))
+
+# === 🧾 Kutilayotgan to‘lovlar ===
+@router.message(F.text == "💳 To‘lovlar")
 async def payments_handler(msg: types.Message):
     if not is_admin(msg):
         return await msg.answer("⛔ Siz admin emassiz.")
-    
+
     payments = get_pending_payments()
     if not payments:
         return await msg.answer("✅ Hozircha kutilayotgan to‘lovlar yo‘q.")
@@ -89,14 +90,22 @@ async def approve_callback(callback: types.CallbackQuery):
         return await callback.answer("❌ Bu to‘lov allaqachon tasdiqlangan.", show_alert=True)
 
     user_id = payment[1]
-    username = payment[2] or ""
+    username = payment[2] or "foydalanuvchi"
 
     approve_payment(payment_id)
     set_premium(user_id, 1)
 
-    # Captionni yangilaymiz
+    # Agar foydalanuvchi avval 3 martadan foydalanib bo‘lgan bo‘lsa, hisobni tozalaymiz
+    if get_free_uses(user_id) >= 3:
+        from utils.db import connect
+        conn = connect()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET free_uses=0 WHERE user_id=?", (user_id,))
+        conn.commit()
+        conn.close()
+
     caption = (
-        f"✅ <b>Tasdiqlandi!</b>\n\n"
+        f"✅ <b>To‘lov tasdiqlandi!</b>\n\n"
         f"👤 @{html.escape(username)}\n"
         f"🆔 ID: <code>{user_id}</code>\n"
         f"🎖 Premium faollashtirildi."
@@ -113,7 +122,7 @@ async def approve_callback(callback: types.CallbackQuery):
             user_id,
             "🎉 <b>Tabriklaymiz!</b>\n"
             "✅ Sizning to‘lovingiz tasdiqlandi va Premium aktivlashtirildi.\n\n"
-            "Endi siz to‘liq .docx fayllarni yuklab olishingiz mumkin 📘",
+            "Endi siz cheklovsiz barcha xizmatlardan to‘liq foydalanishingiz mumkin.",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -144,7 +153,7 @@ async def reject_callback(callback: types.CallbackQuery):
         await callback.message.bot.send_message(
             payment[1],
             "❌ Sizning to‘lovingiz rad etildi.\n"
-            "Iltimos, to‘lov ma’lumotlarini tekshirib, qaytadan yuboring yoki admin bilan bog‘laning."
+            "Iltimos, to‘lov ma’lumotlarini tekshirib, qayta yuboring yoki admin bilan bog‘laning."
         )
     except Exception as e:
         logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
@@ -174,7 +183,7 @@ async def block_callback(callback: types.CallbackQuery):
     await callback.answer("⛔ Bloklandi.")
 
 
-# === 🔓 Unbloklash komandasi (ixtiyoriy) ===
+# === 🔓 Unbloklash komandasi ===
 @router.message(Command("unblock"))
 async def unblock_cmd(msg: types.Message):
     if not is_admin(msg):
