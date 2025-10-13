@@ -1,9 +1,9 @@
 # handlers/user.py
 from aiogram import Router, types, F
 from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import pandas as pd
 from docx import Document
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.db import (
     add_user, is_premium, is_blocked, save_history,
     set_state, get_state, set_subject, get_subject,
@@ -72,9 +72,7 @@ async def start_handler(msg: types.Message):
 
 # === Limit tekshiruvi ===
 async def check_limit(uid: int, msg: types.Message):
-    if uid == ADMIN_ID:
-        return True
-    if is_premium(uid):
+    if uid == ADMIN_ID or is_premium(uid):
         return True
 
     free_uses = get_free_uses(uid)
@@ -92,46 +90,38 @@ async def check_limit(uid: int, msg: types.Message):
         )
         return False
 
-
 # === 📄 Yangi Konspekt ===
 @router.message(F.text == "📄 Yangi Konspekt")
 async def new_conspect(msg: types.Message):
     uid = msg.from_user.id
-    if is_blocked(uid):
-        return await msg.answer("⛔ Siz bloklangansiz.")
+    if is_blocked(uid): return await msg.answer("⛔ Siz bloklangansiz.")
     if not await check_limit(uid, msg): return
     await msg.answer("Fan nomini tanlang:", reply_markup=subject_menu())
     set_state(uid, "subject")
-
 
 # === 📘 Dars ishlanma ===
 @router.message(F.text == "📘 Dars ishlanma yaratish")
 async def new_lesson_plan_start(msg: types.Message):
     uid = msg.from_user.id
-    if is_blocked(uid):
-        return await msg.answer("⛔ Siz bloklangansiz.")
+    if is_blocked(uid): return await msg.answer("⛔ Siz bloklangansiz.")
     if not await check_limit(uid, msg): return
     await msg.answer("Fan nomini tanlang (dars ishlanma uchun):", reply_markup=subject_menu())
     set_state(uid, "lesson_subject")
-
 
 # === 📙 Metodik maslahat ===
 @router.message(F.text == "📙 Metodik maslahat")
 async def methodical_start(msg: types.Message):
     uid = msg.from_user.id
-    if is_blocked(uid):
-        return await msg.answer("⛔ Siz bloklangansiz.")
+    if is_blocked(uid): return await msg.answer("⛔ Siz bloklangansiz.")
     if not await check_limit(uid, msg): return
     await msg.answer("Fan nomini kiriting (masalan: Matematika):")
     set_state(uid, "method_subject")
-
 
 # === 🪄 Muammoni tahlil qilish ===
 @router.message(F.text == "🪄 Muammoni tahlil qilish")
 async def problem_analysis_start(msg: types.Message):
     uid = msg.from_user.id
-    if is_blocked(uid):
-        return await msg.answer("⛔ Siz bloklangansiz.")
+    if is_blocked(uid): return await msg.answer("⛔ Siz bloklangansiz.")
     if not await check_limit(uid, msg): return
     await msg.answer(
         "🧩 Darsda duch kelgan muammoingizni yozing.\n\n"
@@ -141,7 +131,6 @@ async def problem_analysis_start(msg: types.Message):
         "— Guruh ishlari sust kechadi va hokazo."
     )
     set_state(uid, "problem_text")
-
 
 # === Asosiy text jarayoni ===
 @router.message(F.text)
@@ -175,7 +164,7 @@ async def text_flow_handler(msg: types.Message):
         set_state(uid, next_state)
         return await msg.answer("Endi mavzuni kiriting:")
 
-        # === Konspekt ===
+    # === Konspekt ===
     if state == "topic":
         free_uses = get_free_uses(uid)
         is_free = free_uses < 3
@@ -189,17 +178,10 @@ async def text_flow_handler(msg: types.Message):
             filename = create_named_docx(content, subject, topic, uid)
             save_history(uid, subject, grade, topic, filename)
             await msg.answer_document(types.FSInputFile(filename), caption="✅ Konspekt tayyor!", reply_markup=main_menu())
-            try:
-                os.remove(filename)
-            except:
-                pass
+            os.remove(filename)
         else:
             preview = get_preview(content, 20)
-            await msg.answer(
-                f"📝 Konspekt preview (20%):\n\n{preview}\n\n"
-                "To‘liq versiya uchun 15 000 UZS to‘lov qiling.",
-                reply_markup=main_menu()
-            )
+            await msg.answer(f"📝 Konspekt preview (20%):\n\n{preview}\n\nPremium uchun 15 000 UZS to‘lov qiling.", reply_markup=main_menu())
         set_state(uid, None)
 
     # === Dars ishlanma ===
@@ -216,17 +198,10 @@ async def text_flow_handler(msg: types.Message):
             filename = create_named_docx(plan, subject, topic + "_DarsIshlanma", uid)
             save_history(uid, subject, grade, topic, filename)
             await msg.answer_document(types.FSInputFile(filename), caption="✅ Dars ishlanma tayyor!", reply_markup=main_menu())
-            try:
-                os.remove(filename)
-            except:
-                pass
+            os.remove(filename)
         else:
             preview = get_preview(plan, 20)
-            await msg.answer(
-                f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\n"
-                "Premium uchun to‘lov: 15 000 UZS.",
-                reply_markup=main_menu()
-            )
+            await msg.answer(f"📘 Dars ishlanma preview (20%):\n\n{preview}\n\nPremium uchun 15 000 UZS to‘lov qiling.", reply_markup=main_menu())
         set_state(uid, None)
 
     # === Metodik maslahat ===
@@ -238,41 +213,26 @@ async def text_flow_handler(msg: types.Message):
         set_state(uid, None)
         return await msg.answer(result, reply_markup=main_menu())
 
-
-
 # === 💳 To‘lov cheki yuborish ===
 @router.message(F.photo)
 async def handle_payment_photo(msg: types.Message):
     user_id = msg.from_user.id
     if is_blocked(user_id):
         return await msg.answer("⛔ Siz bloklangansiz.")
-
     username = msg.from_user.username or "Noma’lum"
     photo_id = msg.photo[-1].file_id
     payment_id = add_payment(user_id, username, photo_id)
-
     await msg.answer("✅ To‘lov cheki qabul qilindi! Admin tekshiradi ⏳")
-
     buttons = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{payment_id}"),
-            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{payment_id}")
-        ],
-        [
-            InlineKeyboardButton(text="📩 Foydalanuvchi bilan bog‘lanish",
-                                 url=f"https://t.me/{username}" if username != "Noma’lum" else f"tg://user?id={user_id}")
-        ]
+        [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{payment_id}"),
+         InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{payment_id}")],
+        [InlineKeyboardButton(text="📩 Foydalanuvchi bilan bog‘lanish",
+                              url=f"https://t.me/{username}" if username != "Noma’lum" else f"tg://user?id={user_id}")]
     ])
-
     await msg.bot.send_photo(
         ADMIN_ID,
         photo=photo_id,
-        caption=(
-            f"💳 <b>Yangi to‘lov!</b>\n\n"
-            f"👤 Foydalanuvchi: @{username}\n"
-            f"🆔 ID: <code>{user_id}</code>\n"
-            f"📎 Payment ID: <code>{payment_id}</code>"
-        ),
+        caption=f"💳 <b>Yangi to‘lov!</b>\n\n👤 @{username}\n🆔 ID: <code>{user_id}</code>\n📎 Payment ID: <code>{payment_id}</code>",
         parse_mode="HTML",
         reply_markup=buttons
     )
@@ -280,86 +240,77 @@ async def handle_payment_photo(msg: types.Message):
 # === 📤 Excel fayldan konspekt yaratish ===
 @router.message(F.text == "📤 Excel fayldan konspekt yaratish")
 async def excel_instruction(msg: types.Message):
-    await msg.answer(
+    text = (
         "📘 Excel fayldan konspekt yaratish bo‘limi.\n\n"
-        "🧩 Faylni quyidagicha tayyorlang:\n"
-        "1️⃣ Faqat bitta ustun bo‘lsin — <b>Mavzu</b> (birinchi qatorda yozing).\n"
-        "2️⃣ Quyidagicha bo‘lsin:\n\n"
-        "<pre>| Mavzu |\n"
-        "|----------------------|\n"
+        "🧩 Excel faylni quyidagicha tayyorlang:\n"
+        "1. Faqat bitta ustun bo‘lsin — <b>Mavzu</b> (birinchi qatorda yozing).\n"
+        "2. Quyidagicha ko‘rinishda bo‘lsin:\n\n"
+        "| Mavzu |\n"
+        "|---------------------------|\n"
         "| Kasrlarni qo‘shish |\n"
         "| Quyosh tizimi |\n"
         "| Fe’l zamonlari |\n"
-        "| Kimyoviy reaksiyalar |\n</pre>\n\n"
-        "3️⃣ Faylni <b>.xlsx</b> formatda saqlang.\n"
-        "4️⃣ So‘ng faylni shu yerga yuboring 📎",
-        parse_mode="HTML"
+        "| Kimyoviy reaksiyalar |\n\n"
+        "3. Faylni .xlsx formatda saqlang.\n"
+        "4. So‘ng faylni shu yerga yuboring 📎"
     )
+    await msg.answer(text, parse_mode="HTML")
     set_state(msg.from_user.id, "excel_upload")
 
-# === Excel faylni qabul qilish ===
 @router.message(F.document)
 async def handle_excel_file(msg: types.Message):
-    uid = msg.from_user.id
-    state = get_state(uid)
+    user_id = msg.from_user.id
+    state = get_state(user_id)
     if state != "excel_upload":
-        return  # boshqa fayllar uchun
-
-    if is_blocked(uid):
-        return await msg.answer("⛔ Siz bloklangansiz.")
-    if not await check_limit(uid, msg):
         return
 
     document = msg.document
-    file_path = f"temp_{uid}.xlsx"
+    file_path = f"temp_{user_id}.xlsx"
     await msg.bot.download(document, file_path)
 
     try:
         df = pd.read_excel(file_path)
-        if "Mavzu" not in df.columns:
-            await msg.answer("❌ Excel faylda 'Mavzu' nomli ustun bo‘lishi kerak.")
+        if df.empty or "Mavzu" not in df.columns:
+            await msg.answer("❌ Fayl noto‘g‘ri. Excelda 'Mavzu' nomli ustun bo‘lishi kerak.")
             os.remove(file_path)
+            set_state(user_id, None)
             return
 
-        topics = [str(t) for t in df["Mavzu"].dropna().tolist()]
+        topics = df["Mavzu"].dropna().tolist()
         total_topics = len(topics)
-        if total_topics == 0:
-            await msg.answer("⚠️ Faylda birorta ham mavzu topilmadi.")
-            os.remove(file_path)
-            return
 
-        if not is_premium(uid) and total_topics > 5:
+        if not is_premium(user_id) and total_topics > 5:
             await msg.answer(
-                f"⚠️ Siz {total_topics} ta mavzu yubordingiz.\n"
-                "Bepul foydalanuvchilar faqat 5 ta mavzu bilan ishlay oladi.\n\n"
-                "🔓 Premium olish uchun 15 000 UZS to‘lov qiling."
+                f"⚠️ Excelda {total_topics} ta mavzu bor.\n"
+                "Bepul foydalanuvchilar uchun faqat 5 ta mavzu qayta ishlanadi.\n"
+                "🔐 Cheklanmagan imkoniyat uchun 15 000 UZS to‘lov qiling."
             )
             os.remove(file_path)
+            set_state(user_id, None)
             return
 
-        await msg.answer(f"⏳ {total_topics} ta mavzu bo‘yicha konspekt yaratilmoqda, iltimos kuting...")
+        await msg.answer(f"⏳ {total_topics} ta mavzu uchun konspekt yaratilmoqda, kuting...")
 
         topics_text = "\n".join([f"{i+1}. {t}" for i, t in enumerate(topics)])
         prompt = (
-            f"Quyidagi {total_topics} ta mavzu bo‘yicha o‘qituvchilar uchun batafsil, to‘liq, "
-            f"uzun konspekt yozing. Har bir mavzu uchun sarlavha qo‘ying va punktlar bilan yozing.\n\n{topics_text}"
+            f"Quyidagi {total_topics} ta mavzu bo‘yicha o‘qituvchilar uchun juda uzun, batafsil konspekt yozing.\n"
+            f"Har bir mavzuga alohida sarlavha qo‘ying.\n\n{topics_text}"
         )
 
-        result_text = generate_conspect("Umumiy fanlar", "Turli sinflar", prompt)
+        result_text = generate_conspect("Umumiy fan", "Har xil sinflar", prompt)
 
         doc = Document()
-        doc.add_heading("Yig‘ma Konspekt", 0)
+        doc.add_heading("Yig‘ma Konspekt", level=0)
         doc.add_paragraph(result_text)
-        output_path = f"{uid}_yigma_konspekt.docx"
+        output_path = f"{user_id}_yigma_konspekt.docx"
         doc.save(output_path)
 
         await msg.answer_document(types.FSInputFile(output_path), caption="✅ Yig‘ma konspekt tayyor!")
         os.remove(file_path)
         os.remove(output_path)
-        set_state(uid, None)
 
     except Exception as e:
-        logger.exception("Excel konspekt xatosi: %s", e)
-        await msg.answer(f"❌ Xatolik: {e}")
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        await msg.answer(f"❌ Xatolik: {str(e)}")
+
+    # Excel state tozalash
+    set_state(user_id, None)
