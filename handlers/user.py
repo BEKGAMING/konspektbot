@@ -1,9 +1,8 @@
-# handlers/user.py
 from aiogram import Router, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import pandas as pd
 from docx import Document
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.db import (
     add_user, is_premium, is_blocked, save_history,
     set_state, get_state, set_subject, get_subject,
@@ -74,21 +73,19 @@ async def start_handler(msg: types.Message):
 async def check_limit(uid: int, msg: types.Message):
     if uid == ADMIN_ID or is_premium(uid):
         return True
-
     free_uses = get_free_uses(uid)
     if free_uses < 3:
         increment_free_use(uid)
         await msg.answer(f"🎁 Bepul foydalanish: {free_uses + 1}/3")
         return True
-    else:
-        await msg.answer(
-            "🎁 Sizning 3 ta bepul imkoniyatingiz tugadi.\n"
-            "🔐 Xizmatdan foydalanishni davom ettirish uchun 15 000 UZS to‘lov qiling.\n"
-            "💳 Karta: <code>9860 6067 4424 9933</code>\n"
-            "📸 To‘lov qilib bo‘lgandan so‘ng, chek rasmini shu botga yuboring — admin tasdiqlaydi ✅",
-            parse_mode="HTML"
-        )
-        return False
+    await msg.answer(
+        "🎁 Sizning 3 ta bepul imkoniyatingiz tugadi.\n"
+        "🔐 Xizmatdan foydalanishni davom ettirish uchun 15 000 UZS to‘lov qiling.\n"
+        "💳 Karta: <code>9860 6067 4424 9933</code>\n"
+        "📸 To‘lov qilib bo‘lgandan so‘ng, chek rasmini shu botga yuboring — admin tasdiqlaydi ✅",
+        parse_mode="HTML"
+    )
+    return False
 
 # === 📄 Yangi Konspekt ===
 @router.message(F.text == "📄 Yangi Konspekt")
@@ -237,80 +234,90 @@ async def handle_payment_photo(msg: types.Message):
         reply_markup=buttons
     )
 
+
 # === 📤 Excel fayldan konspekt yaratish ===
 @router.message(F.text == "📤 Excel fayldan konspekt yaratish")
 async def excel_instruction(msg: types.Message):
-    text = (
+    await msg.answer(
         "📘 Excel fayldan konspekt yaratish bo‘limi.\n\n"
-        "🧩 Excel faylni quyidagicha tayyorlang:\n"
-        "1. Faqat bitta ustun bo‘lsin — <b>Mavzu</b> (birinchi qatorda yozing).\n"
-        "2. Quyidagicha ko‘rinishda bo‘lsin:\n\n"
-        "| Mavzu |\n"
-        "|---------------------------|\n"
+        "🧩 Faylni quyidagicha tayyorlang:\n"
+        "1️⃣ Faqat bitta ustun bo‘lsin — <b>Mavzu</b> (birinchi qatorda yozing).\n"
+        "2️⃣ Quyidagicha bo‘lsin:\n\n"
+        "<pre>| Mavzu |\n"
+        "|----------------------|\n"
         "| Kasrlarni qo‘shish |\n"
         "| Quyosh tizimi |\n"
         "| Fe’l zamonlari |\n"
-        "| Kimyoviy reaksiyalar |\n\n"
-        "3. Faylni .xlsx formatda saqlang.\n"
-        "4. So‘ng faylni shu yerga yuboring 📎"
+        "| Kimyoviy reaksiyalar |\n</pre>\n\n"
+        "3️⃣ Faylni <b>.xlsx</b> formatda saqlang.\n"
+        "4️⃣ So‘ng faylni shu yerga yuboring 📎",
+        parse_mode="HTML"
     )
-    await msg.answer(text, parse_mode="HTML")
     set_state(msg.from_user.id, "excel_upload")
 
+# === Excel faylni qabul qilish ===
 @router.message(F.document)
 async def handle_excel_file(msg: types.Message):
-    user_id = msg.from_user.id
-    state = get_state(user_id)
+    uid = msg.from_user.id
+    state = get_state(uid)
     if state != "excel_upload":
+        return  # boshqa fayllar uchun
+
+    if is_blocked(uid):
+        return await msg.answer("⛔ Siz bloklangansiz.")
+    if not await check_limit(uid, msg):
         return
 
     document = msg.document
-    file_path = f"temp_{user_id}.xlsx"
+    file_path = f"temp_{uid}.xlsx"
     await msg.bot.download(document, file_path)
 
     try:
         df = pd.read_excel(file_path)
-        if df.empty or "Mavzu" not in df.columns:
-            await msg.answer("❌ Fayl noto‘g‘ri. Excelda 'Mavzu' nomli ustun bo‘lishi kerak.")
+        if "Mavzu" not in df.columns:
+            await msg.answer("❌ Excel faylda 'Mavzu' nomli ustun bo‘lishi kerak.")
             os.remove(file_path)
-            set_state(user_id, None)
             return
 
-        topics = df["Mavzu"].dropna().tolist()
+        topics = [str(t) for t in df["Mavzu"].dropna().tolist()]
         total_topics = len(topics)
+        if total_topics == 0:
+            await msg.answer("⚠️ Faylda birorta ham mavzu topilmadi.")
+            os.remove(file_path)
+            return
 
-        if not is_premium(user_id) and total_topics > 5:
+        if not is_premium(uid) and total_topics > 5:
             await msg.answer(
-                f"⚠️ Excelda {total_topics} ta mavzu bor.\n"
-                "Bepul foydalanuvchilar uchun faqat 5 ta mavzu qayta ishlanadi.\n"
-                "🔐 Cheklanmagan imkoniyat uchun 15 000 UZS to‘lov qiling."
+                f"⚠️ Siz {total_topics} ta mavzu yubordingiz.\n"
+                "Bepul foydalanuvchilar faqat 5 ta mavzu bilan ishlay oladi.\n\n"
+                "🔓 Premium olish uchun 15 000 UZS to‘lov qiling."
             )
             os.remove(file_path)
-            set_state(user_id, None)
             return
 
-        await msg.answer(f"⏳ {total_topics} ta mavzu uchun konspekt yaratilmoqda, kuting...")
+        await msg.answer(f"⏳ {total_topics} ta mavzu bo‘yicha konspekt yaratilmoqda, iltimos kuting...")
 
         topics_text = "\n".join([f"{i+1}. {t}" for i, t in enumerate(topics)])
         prompt = (
-            f"Quyidagi {total_topics} ta mavzu bo‘yicha o‘qituvchilar uchun juda uzun, batafsil konspekt yozing.\n"
-            f"Har bir mavzuga alohida sarlavha qo‘ying.\n\n{topics_text}"
+            f"Quyidagi {total_topics} ta mavzu bo‘yicha o‘qituvchilar uchun batafsil, to‘liq, "
+            f"uzun konspekt yozing. Har bir mavzu uchun sarlavha qo‘ying va punktlar bilan yozing.\n\n{topics_text}"
         )
 
-        result_text = generate_conspect("Umumiy fan", "Har xil sinflar", prompt)
+        result_text = generate_conspect("Umumiy fanlar", "Turli sinflar", prompt)
 
         doc = Document()
-        doc.add_heading("Yig‘ma Konspekt", level=0)
+        doc.add_heading("Yig‘ma Konspekt", 0)
         doc.add_paragraph(result_text)
-        output_path = f"{user_id}_yigma_konspekt.docx"
+        output_path = f"{uid}_yigma_konspekt.docx"
         doc.save(output_path)
 
         await msg.answer_document(types.FSInputFile(output_path), caption="✅ Yig‘ma konspekt tayyor!")
         os.remove(file_path)
         os.remove(output_path)
+        set_state(uid, None)
 
     except Exception as e:
-        await msg.answer(f"❌ Xatolik: {str(e)}")
-
-    # Excel state tozalash
-    set_state(user_id, None)
+        logger.exception("Excel konspekt xatosi: %s", e)
+        await msg.answer(f"❌ Xatolik: {e}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
