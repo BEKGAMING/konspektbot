@@ -1,5 +1,7 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
+import pandas as pd
+from docx import Document
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.db import (
     add_user, is_premium, is_blocked, save_history,
@@ -23,7 +25,7 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text="📄 Yangi Konspekt"), KeyboardButton(text="📘 Dars ishlanma yaratish")],
             [KeyboardButton(text="📙 Metodik maslahat"), KeyboardButton(text="📂 Mening konspektlarim")],
-            [KeyboardButton(text="🪄 Muammoni tahlil qilish")]
+            [KeyboardButton(text="🪄 Muammoni tahlil qilish"), KeyboardButton(text="📤 Excel fayldan konspekt yaratish")]
         ],
         resize_keyboard=True
     )
@@ -273,3 +275,83 @@ async def handle_payment_photo(msg: types.Message):
         parse_mode="HTML",
         reply_markup=buttons
     )
+
+@router.message(F.text == "📤 Excel fayldan konspekt yaratish")
+async def excel_instruction(msg: types.Message):
+    text = (
+        "📘 Excel fayldan konspekt yaratish bo‘limi.\n\n"
+        "🧩 Excel faylni quyidagicha tayyorlang:\n"
+        "1. Faqat bitta ustun bo‘lsin — <b>Mavzu</b> (birinchi qatorda yozing).\n"
+        "2. Quyidagicha ko‘rinishda bo‘lsin:\n\n"
+        "   | Mavzu |\n"
+        "   |----------------------------|\n"
+        "   | Kasrlarni qo‘shish |\n"
+        "   | Quyosh tizimi |\n"
+        "   | Fe’l zamonlari |\n"
+        "   | Kimyoviy reaksiyalar |\n\n"
+        "3. Faylni .xlsx formatda saqlang.\n"
+        "4. So‘ng faylni shu yerga yuboring 📎"
+    )
+    await msg.answer(text, parse_mode="HTML")
+    set_state(msg.from_user.id, "excel_upload")
+
+@router.message(F.document)
+async def handle_excel_file(msg: types.Message):
+    user_id = msg.from_user.id
+    state = get_state(user_id)
+    if state != "excel_upload":
+        return  # boshqa fayl uchun emas
+
+    # Excel faylni yuklab olish
+    document = msg.document
+    file_path = f"temp_{user_id}.xlsx"
+    await msg.bot.download(document, file_path)
+
+    try:
+        # Excel faylni o‘qish
+        df = pd.read_excel(file_path)
+        if df.empty or "Mavzu" not in df.columns:
+            await msg.answer("❌ Fayl noto‘g‘ri. Excelda 'Mavzu' nomli ustun bo‘lishi kerak.")
+            os.remove(file_path)
+            return
+
+        topics = df["Mavzu"].dropna().tolist()
+        total_topics = len(topics)
+
+        # Limit tekshirish
+        if not is_premium(user_id) and total_topics > 5:
+            await msg.answer(
+                f"⚠️ Sizning Excel faylingizda {total_topics} ta mavzu bor.\n"
+                f"Bepul foydalanuvchilar uchun faqat 5 ta mavzuga ruxsat beriladi.\n\n"
+                f"🔐 Cheklanmagan miqdorda foydalanish uchun Premium faollashtiring (15 000 UZS)."
+            )
+            os.remove(file_path)
+            return
+
+        await msg.answer(f"⏳ {total_topics} ta mavzu uchun konspekt yaratilmoqda, biroz kuting...")
+
+        # So‘rov tayyorlash
+        topics_text = "\n".join([f"{i+1}. {t}" for i, t in enumerate(topics)])
+        prompt = (
+            f"Quyidagi {total_topics} ta mavzu bo‘yicha o‘qituvchilar uchun juda uzun, batafsil konspekt yozing.\n"
+            f"Har bir mavzuga alohida sarlavha qo‘ying, strukturani saqlang.\n\n{topics_text}"
+        )
+
+        # Konspekt yaratish
+        result_text = generate_conspect("Umumiy fan", "Har xil sinflar", prompt)
+
+        # DOCX fayl yaratish
+        doc = Document()
+        doc.add_heading("Yig‘ma Konspekt", level=0)
+        doc.add_paragraph(result_text)
+        output_path = f"{user_id}_yigma_konspekt.docx"
+        doc.save(output_path)
+
+        await msg.answer_document(types.FSInputFile(output_path), caption="✅ Yig‘ma konspekt tayyor!")
+        os.remove(file_path)
+        os.remove(output_path)
+
+    except Exception as e:
+        await msg.answer(f"❌ Xatolik: {str(e)}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
