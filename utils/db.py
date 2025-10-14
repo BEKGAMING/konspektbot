@@ -7,12 +7,12 @@ DB_PATH = "database.db"
 def connect():
     return sqlite3.connect(DB_PATH)
 
-# === Jadval yaratish va tekshirish ===
+# === Jadval yaratish ===
 def init_db():
     conn = connect()
     cur = conn.cursor()
 
-    # Users jadvali
+    # === users jadvali ===
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -21,11 +21,12 @@ def init_db():
         blocked INTEGER DEFAULT 0,
         state TEXT,
         subject TEXT,
-        grade TEXT
+        grade TEXT,
+        free_uses INTEGER DEFAULT 0
     )
     """)
 
-    # Boshqa jadvallar
+    # === history jadvali ===
     cur.execute("""
     CREATE TABLE IF NOT EXISTS history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +39,7 @@ def init_db():
     )
     """)
 
+    # === payments jadvali ===
     cur.execute("""
     CREATE TABLE IF NOT EXISTS payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,6 +51,7 @@ def init_db():
     )
     """)
 
+    # === last_requests jadvali ===
     cur.execute("""
     CREATE TABLE IF NOT EXISTS last_requests (
         user_id INTEGER PRIMARY KEY,
@@ -59,25 +62,18 @@ def init_db():
     )
     """)
 
-    # ✅ free_uses ustunini tekshiramiz, agar yo‘q bo‘lsa qo‘shamiz
-    try:
-        cur.execute("SELECT free_uses FROM users LIMIT 1")
-    except sqlite3.OperationalError:
-        print("🧩 'free_uses' ustuni topilmadi, qo‘shilmoqda...")
-        cur.execute("ALTER TABLE users ADD COLUMN free_uses INTEGER DEFAULT 0")
-        print("✅ 'free_uses' ustuni muvaffaqiyatli qo‘shildi.")
-
     conn.commit()
     conn.close()
 
-# === Oxirgi so‘rovlar ===
+
+# === So‘nggi so‘rovni saqlash ===
 def save_last_request(user_id: int, subject: str, grade: str, topic: str):
     conn = connect()
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO last_requests (user_id, subject, grade, topic, created_at)
         VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET 
+        ON CONFLICT(user_id) DO UPDATE SET
             subject=excluded.subject,
             grade=excluded.grade,
             topic=excluded.topic,
@@ -94,16 +90,33 @@ def get_last_request(user_id: int):
     conn.close()
     return row
 
-# === Foydalanuvchilar ===
+
+# === Foydalanuvchilar boshqaruvi ===
 def add_user(user_id: int, username: str):
     conn = connect()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT OR IGNORE INTO users (user_id, username, free_uses) VALUES (?, ?, 0)",
-        (user_id, username)
-    )
+    cur.execute("""
+        INSERT OR IGNORE INTO users (user_id, username, premium, blocked, state, subject, grade, free_uses)
+        VALUES (?, ?, 0, 0, NULL, NULL, NULL, 0)
+    """, (user_id, username))
     conn.commit()
     conn.close()
+
+def get_all_users():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, username, premium, blocked, free_uses FROM users")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+def get_users_count():
+    conn = connect()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
 
 def is_premium(user_id: int) -> bool:
     conn = connect()
@@ -142,15 +155,16 @@ def is_blocked(user_id: int) -> bool:
     conn.close()
     return row and row[0] == 1
 
-def get_users_count():
+def get_blocked_users():
     conn = connect()
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users")
-    row = cur.fetchone()
+    cur.execute("SELECT user_id, username FROM users WHERE blocked=1")
+    rows = cur.fetchall()
     conn.close()
-    return row[0] if row else 0
+    return rows
 
-# === State boshqaruvi ===
+
+# === Holat boshqaruvi ===
 def set_state(user_id: int, state: str):
     conn = connect()
     cur = conn.cursor()
@@ -166,7 +180,8 @@ def get_state(user_id: int):
     conn.close()
     return row[0] if row else None
 
-# === Fan / sinf ===
+
+# === Fan / sinf boshqaruvi ===
 def set_subject(user_id: int, subject: str):
     conn = connect()
     cur = conn.cursor()
@@ -197,14 +212,15 @@ def get_grade(user_id: int):
     conn.close()
     return row[0] if row else None
 
-# === Tarix ===
+
+# === Tarix boshqaruvi ===
 def save_history(user_id: int, subject: str, grade: str, topic: str, file_path: str):
     conn = connect()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO history (user_id, subject, grade, topic, file_path) VALUES (?, ?, ?, ?, ?)",
-        (user_id, subject, grade, topic, file_path)
-    )
+    cur.execute("""
+        INSERT INTO history (user_id, subject, grade, topic, file_path)
+        VALUES (?, ?, ?, ?, ?)
+    """, (user_id, subject, grade, topic, file_path))
     conn.commit()
     conn.close()
 
@@ -216,7 +232,8 @@ def get_history(user_id: int):
     conn.close()
     return rows
 
-# === To‘lovlar ===
+
+# === To‘lov boshqaruvi ===
 def add_payment(user_id: int, username: str, photo_id: str):
     conn = connect()
     cur = conn.cursor()
@@ -224,10 +241,10 @@ def add_payment(user_id: int, username: str, photo_id: str):
         INSERT INTO payments (user_id, username, photo_id, approved, created_at)
         VALUES (?, ?, ?, 0, ?)
     """, (user_id, username, photo_id, datetime.now()))
-    pid = cur.lastrowid
+    payment_id = cur.lastrowid
     conn.commit()
     conn.close()
-    return pid
+    return payment_id
 
 def get_pending_payments():
     conn = connect()
@@ -259,7 +276,8 @@ def reject_payment(payment_id: int):
     conn.commit()
     conn.close()
 
-# === Bepul foydalanishlar ===
+
+# === Bepul foydalanish ===
 def get_free_uses(user_id: int) -> int:
     conn = connect()
     cur = conn.cursor()

@@ -5,8 +5,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import html, logging
 from utils.db import (
     set_premium, block_user, unblock_user, get_users_count,
-    get_pending_payments, approve_payment, get_payment_by_id, reject_payment,
-    get_free_uses
+    get_pending_payments, approve_payment, get_payment_by_id,
+    reject_payment, get_free_uses, get_blocked_users, get_all_users
 )
 from config import ADMIN_ID
 
@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 def is_admin(msg: types.Message) -> bool:
     return msg.from_user.id == ADMIN_ID
 
-# === Admin panel ===
+
+# === ADMIN PANEL ===
 @router.message(Command("admin"))
 async def admin_panel(msg: types.Message):
     if not is_admin(msg):
@@ -33,7 +34,22 @@ async def admin_panel(msg: types.Message):
     await msg.answer("👑 Admin paneliga xush kelibsiz!", reply_markup=adminbuttons)
 
 
-# === 🧾 Kutilayotgan to‘lovlar ===
+# === 📊 Statistika ===
+@router.message(F.text == "📊 Statistika")
+async def show_stats(msg: types.Message):
+    if not is_admin(msg):
+        return await msg.answer("⛔ Siz admin emassiz.")
+    total_users = get_users_count()
+    blocked = len(get_blocked_users())
+    await msg.answer(
+        f"📈 <b>Statistika:</b>\n\n"
+        f"👥 Foydalanuvchilar: <b>{total_users}</b>\n"
+        f"🚫 Bloklanganlar: <b>{blocked}</b>",
+        parse_mode="HTML"
+    )
+
+
+# === 💳 To‘lovlarni ko‘rish ===
 @router.message(F.text == "💳 To‘lovlar")
 async def payments_handler(msg: types.Message):
     if not is_admin(msg):
@@ -84,7 +100,7 @@ async def approve_callback(callback: types.CallbackQuery):
     payment_id = int(callback.data.split("_", 1)[1])
     payment = get_payment_by_id(payment_id)
     if not payment:
-        return await callback.answer("❌ To‘lov allaqachon ko‘rib chiqilgan yoki topilmadi.", show_alert=True)
+        return await callback.answer("❌ To‘lov topilmadi.", show_alert=True)
 
     if payment[4] == 1:
         return await callback.answer("❌ Bu to‘lov allaqachon tasdiqlangan.", show_alert=True)
@@ -95,38 +111,33 @@ async def approve_callback(callback: types.CallbackQuery):
     approve_payment(payment_id)
     set_premium(user_id, 1)
 
-    # Agar foydalanuvchi avval 3 martadan foydalanib bo‘lgan bo‘lsa, hisobni tozalaymiz
+    # agar 3 martalik limit tugagan bo‘lsa — nolga tushuramiz
     if get_free_uses(user_id) >= 3:
         from utils.db import connect
         conn = connect()
         cur = conn.cursor()
-        cur.execute("UPDATE users SET free_uses=0 WHERE user_id=?", (user_id,))
+        cur.execute("UPDATE users SET free_uses = 0 WHERE user_id=?", (user_id,))
         conn.commit()
         conn.close()
 
-    caption = (
+    await callback.message.edit_caption(
         f"✅ <b>To‘lov tasdiqlandi!</b>\n\n"
         f"👤 @{html.escape(username)}\n"
         f"🆔 ID: <code>{user_id}</code>\n"
-        f"🎖 Premium faollashtirildi."
+        f"🎖 Premium faollashtirildi.",
+        parse_mode="HTML"
     )
 
-    try:
-        await callback.message.edit_caption(caption, parse_mode="HTML")
-    except Exception as e:
-        logger.exception("edit_caption xato: %s", e)
-
-    # Foydalanuvchiga xabar
     try:
         await callback.message.bot.send_message(
             user_id,
             "🎉 <b>Tabriklaymiz!</b>\n"
-            "✅ Sizning to‘lovingiz tasdiqlandi va Premium aktivlashtirildi.\n\n"
-            "Endi siz cheklovsiz barcha xizmatlardan to‘liq foydalanishingiz mumkin.",
+            "✅ Sizning to‘lovingiz tasdiqlandi va Premium faollashtirildi.\n\n"
+            "Endi siz cheklovsiz barcha xizmatlardan foydalanishingiz mumkin.",
             parse_mode="HTML"
         )
-    except Exception as e:
-        logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
+    except:
+        pass
 
     await callback.answer("✅ Tasdiqlandi!")
 
@@ -140,23 +151,20 @@ async def reject_callback(callback: types.CallbackQuery):
     payment_id = int(callback.data.split("_", 1)[1])
     payment = get_payment_by_id(payment_id)
     if not payment:
-        return await callback.answer("❌ To‘lov topilmadi yoki allaqachon ko‘rib chiqilgan.", show_alert=True)
+        return await callback.answer("❌ To‘lov topilmadi.", show_alert=True)
 
     reject_payment(payment_id)
 
-    try:
-        await callback.message.edit_caption("❌ <b>Rad etildi.</b> Admin tomonidan rad etildi.", parse_mode="HTML")
-    except Exception as e:
-        logger.exception("edit_caption xato: %s", e)
+    await callback.message.edit_caption("❌ <b>Rad etildi.</b> Admin tomonidan rad etildi.", parse_mode="HTML")
 
     try:
         await callback.message.bot.send_message(
             payment[1],
             "❌ Sizning to‘lovingiz rad etildi.\n"
-            "Iltimos, to‘lov ma’lumotlarini tekshirib, qayta yuboring yoki admin bilan bog‘laning."
+            "Iltimos, to‘lovni qayta yuboring yoki admin bilan bog‘laning."
         )
-    except Exception as e:
-        logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
+    except:
+        pass
 
     await callback.answer("❌ Rad etildi.")
 
@@ -166,33 +174,39 @@ async def reject_callback(callback: types.CallbackQuery):
 async def block_callback(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         return await callback.answer("⛔ Siz admin emassiz.", show_alert=True)
-
     user_id = int(callback.data.split("_", 1)[1])
     block_user(user_id)
-
-    try:
-        await callback.message.edit_caption("⛔ <b>Foydalanuvchi bloklandi.</b>", parse_mode="HTML")
-    except Exception as e:
-        logger.exception("edit_caption xato: %s", e)
-
+    await callback.message.edit_caption("⛔ <b>Foydalanuvchi bloklandi.</b>", parse_mode="HTML")
     try:
         await callback.message.bot.send_message(user_id, "⛔ Siz administrator tomonidan bloklandingiz.")
-    except Exception as e:
-        logger.exception("Foydalanuvchiga xabar yuborishda xato: %s", e)
-
+    except:
+        pass
     await callback.answer("⛔ Bloklandi.")
 
 
-# === 🔓 Unbloklash komandasi ===
+# === 🔓 Blokdan chiqarish ===
+@router.message(F.text == "🔓 Blokdan chiqarish")
+async def unblock_command(msg: types.Message):
+    if not is_admin(msg):
+        return await msg.answer("⛔ Siz admin emassiz.")
+    blocked_users = get_blocked_users()
+    if not blocked_users:
+        return await msg.answer("✅ Bloklangan foydalanuvchilar yo‘q.")
+    text = "🚫 <b>Bloklangan foydalanuvchilar:</b>\n\n"
+    for u in blocked_users:
+        text += f"🆔 {u[0]} — @{u[1] or 'username yo‘q'}\n"
+    text += "\nFoydalanuvchini ID orqali unbloklash uchun /unblock [id] yozing."
+    await msg.answer(text, parse_mode="HTML")
+
+
+# === /unblock [id] ===
 @router.message(Command("unblock"))
 async def unblock_cmd(msg: types.Message):
     if not is_admin(msg):
         return await msg.answer("⛔ Siz admin emassiz.")
-    
     parts = msg.text.strip().split()
     if len(parts) < 2:
         return await msg.answer("🔧 Foydalanuvchini unbloklash uchun ID yuboring.\nMasalan: /unblock 123456789")
-
     user_id = int(parts[1])
     unblock_user(user_id)
     await msg.answer(f"✅ Foydalanuvchi ({user_id}) qayta faollashtirildi.")
