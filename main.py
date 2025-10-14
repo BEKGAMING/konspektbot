@@ -22,7 +22,7 @@ dp = Dispatcher()
 # === Routerlarni ulaymiz ===
 dp.include_router(user_router)
 dp.include_router(admin_router)
-# dp.include_router(payment_router)  # Agar alohida payment.py bo‘lsa, shu qatorni aktivlashtiring
+dp.include_router(payment_router)  # Agar alohida payment.py bo‘lsa, shu qatorni aktivlashtiring
 
 # === Webhook startup ===
 async def on_startup(app):
