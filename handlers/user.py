@@ -3,6 +3,7 @@ from aiogram import Router, types, F
 from aiogram.filters import Command
 import pandas as pd
 from docx import Document
+from aiogram.filters import CommandStart
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.db import (
     add_user, is_premium, is_blocked, save_history,
@@ -33,7 +34,7 @@ def main_menu():
 
 
 # === START ===
-@router.message(Command("start"))
+@router.message(CommandStart())
 async def start_handler(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
     if is_blocked(msg.from_user.id):
